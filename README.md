@@ -9,5 +9,5 @@ Celem projektu jest dostarczenie mieszkańcom Gdańska i turystom aplikacji webo
 * Czysty, responsywny interfejs zoptymalizowany pod kątem szybkiego ładowania.
 
 ## Technologie i Architektura
-* **Backend / Logika:** Python (środowisko PyCharm).
+* **Backend / Logika:** Python
 * **Frontend / UI:** TBD
