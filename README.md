@@ -10,4 +10,4 @@ Celem projektu jest dostarczenie mieszkańcom Gdańska i turystom aplikacji webo
 
 ## Technologie i Architektura
 * **Backend / Logika:** Python
-* **Frontend / UI:** MapLibre GL JS 
+* **Frontend / UI:** MapLibre GL JS  +  React
