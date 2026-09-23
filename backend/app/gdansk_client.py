@@ -1,7 +1,9 @@
 import logging
-from typing import Any
 
 import httpx
+from pydantic import ValidationError
+
+from app.models import GpsPositionsResponse
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +19,15 @@ class GdanskClient:
         self._url = base_url
         self._client = httpx.AsyncClient(timeout=timeout)
 
-    async def fetch_positions(self) -> dict[str, Any]:
+    async def fetch_positions(self) -> GpsPositionsResponse:
         try:
             response = await self._client.get(self._url, params={"v": 2})
             response.raise_for_status()
-            return response.json()
+            return GpsPositionsResponse.model_validate(response.json())
         except httpx.TimeoutException as exc:
             logger.warning("gdansk api timeout: %s", exc)
             raise GdanskApiError("timeout") from exc
-        except (httpx.HTTPError, ValueError) as exc:
+        except (httpx.HTTPError, ValidationError, ValueError) as exc:
             logger.warning("gdansk api error: %s", exc)
             raise GdanskApiError(str(exc)) from exc
 
