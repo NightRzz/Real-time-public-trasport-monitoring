@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.config import get_settings
 from app.gdansk_client import GdanskClient
 from app.poller import GpsPoller
 
@@ -12,8 +13,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    client = GdanskClient()
-    poller = GpsPoller(client)
+    settings = get_settings()
+    client = GdanskClient(timeout=settings.gdansk_api_timeout_seconds)
+    poller = GpsPoller(client, interval=settings.poll_interval_seconds)
     app.state.poller = poller
     poller.start()
     yield
