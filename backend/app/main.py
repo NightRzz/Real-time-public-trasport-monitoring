@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api import router as api_router
 from app.config import get_settings
 from app.gdansk_client import GdanskClient
 from app.poller import GpsPoller
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Gdansk Transport API", version="0.1.0", lifespan=lifespan)
+app.include_router(api_router)
 
 
 @app.get("/health")
