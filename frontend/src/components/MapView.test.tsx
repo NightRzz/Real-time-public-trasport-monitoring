@@ -1,10 +1,20 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MapView } from './MapView'
+
+const handlers: Record<string, () => void> = {}
 
 const mapMock = vi.hoisted(() => ({
   Map: vi.fn(function () {
-    return { addControl: vi.fn(), remove: vi.fn() }
+    return {
+      addControl: vi.fn(),
+      remove: vi.fn(),
+      on: (event: string, cb: () => void) => {
+        handlers[event] = cb
+      },
+      getCenter: () => ({ lng: 18.6, lat: 54.4 }),
+      getZoom: () => 14,
+    }
   }),
   NavigationControl: vi.fn(),
 }))
@@ -12,6 +22,10 @@ const mapMock = vi.hoisted(() => ({
 vi.mock('maplibre-gl', () => mapMock)
 
 describe('MapView', () => {
+  beforeEach(() => {
+    mapMock.Map.mockClear()
+  })
+
   it('is centered on gdansk by default', () => {
     render(<MapView />)
 
@@ -27,5 +41,14 @@ describe('MapView', () => {
     expect(mapMock.Map).toHaveBeenLastCalledWith(
       expect.objectContaining({ center: [18, 54], zoom: 10 }),
     )
+  })
+
+  it('reports view after zoom or pan', () => {
+    const onViewChange = vi.fn()
+    render(<MapView onViewChange={onViewChange} />)
+
+    handlers.moveend()
+
+    expect(onViewChange).toHaveBeenCalledWith({ center: [18.6, 54.4], zoom: 14 })
   })
 })
