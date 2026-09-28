@@ -1,0 +1,45 @@
+{
+  "info": {
+    "name": "Gdansk Transport API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [{ "key": "baseUrl", "value": "http://localhost:8000" }],
+  "item": [
+    {
+      "name": "health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "vehicles",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/vehicles" },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('feature collection', () => pm.expect(body.type).to.eql('FeatureCollection'));",
+              "pm.test('response under 200ms', () => pm.expect(pm.response.responseTime).to.be.below(200));",
+              "pm.test('points have lon lat', () => body.features.forEach(f => {",
+              "  pm.expect(f.geometry.type).to.eql('Point');",
+              "  pm.expect(f.geometry.coordinates).to.have.lengthOf(2);",
+              "}));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

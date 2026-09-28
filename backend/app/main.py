@@ -29,7 +29,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await client.close()
 
 
-app = FastAPI(title="Gdansk Transport API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="Gdansk Transport API",
+    description="Live positions of public transport vehicles in Gdansk.",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origin_list,
@@ -39,6 +44,6 @@ app.add_middleware(
 app.include_router(api_router)
 
 
-@app.get("/health")
+@app.get("/health", tags=["system"], summary="Health check")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
