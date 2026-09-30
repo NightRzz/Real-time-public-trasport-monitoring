@@ -1,6 +1,14 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+
+
+def ensure_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+UtcDatetime = Annotated[datetime, AfterValidator(ensure_utc)]
 
 
 class RawVehicle(BaseModel):
@@ -17,9 +25,11 @@ class RawVehicle(BaseModel):
     speed: float | None = None
     direction: float | None = None
     delay: int | None = None
-    timestamp: datetime = Field(alias="generated")
+    timestamp: UtcDatetime = Field(alias="generated")
 
 
 class GpsPositionsResponse(BaseModel):
-    last_update: datetime = Field(alias="lastUpdate")
+    model_config = ConfigDict(populate_by_name=True)
+
+    last_update: UtcDatetime = Field(alias="lastUpdate")
     vehicles: list[RawVehicle]
