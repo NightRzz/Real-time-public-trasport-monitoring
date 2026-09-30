@@ -8,6 +8,7 @@ const mapMock = vi.hoisted(() => ({
   Map: vi.fn(function () {
     return {
       addControl: vi.fn(),
+      setStyle: vi.fn(),
       remove: vi.fn(),
       on: (event: string, cb: () => void) => {
         handlers[event] = cb

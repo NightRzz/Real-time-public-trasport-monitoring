@@ -3,8 +3,7 @@ import { Map as MapLibreMap, NavigationControl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Box } from '@mui/material'
 import { GDANSK_CENTER, GDANSK_ZOOM, MAX_ZOOM, MIN_ZOOM, TRICITY_BOUNDS } from '../constants/map'
-
-const DEFAULT_STYLE = 'https://demotiles.maplibre.org/style.json'
+import { OPENFREEMAP_STYLE, removePoiLayers } from '../map/style'
 
 export interface MapViewState {
   center: [number, number]
@@ -19,7 +18,7 @@ export interface MapViewProps {
 }
 
 export function MapView({
-  styleUrl = DEFAULT_STYLE,
+  styleUrl = OPENFREEMAP_STYLE,
   center = GDANSK_CENTER,
   zoom = GDANSK_ZOOM,
   onViewChange,
@@ -36,13 +35,13 @@ export function MapView({
     if (!containerRef.current) return
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: styleUrl,
       center: initialView.current.center,
       zoom: initialView.current.zoom,
       minZoom: MIN_ZOOM,
       maxZoom: MAX_ZOOM,
       maxBounds: TRICITY_BOUNDS,
     })
+    map.setStyle(styleUrl, { transformStyle: (_, next) => removePoiLayers(next) })
     map.addControl(new NavigationControl(), 'top-right')
     map.on('moveend', () => {
       const { lng, lat } = map.getCenter()
