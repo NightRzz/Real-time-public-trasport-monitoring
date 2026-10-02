@@ -19,3 +19,13 @@ def test_empty_store_gives_empty_collection():
 
     assert collection.features == []
     assert collection.last_update is None
+
+
+def test_tram_line_gets_tram_type():
+    data = GpsPositionsResponse.model_validate(
+        {**SAMPLE, "vehicles": [{**SAMPLE["vehicles"][0], "routeShortName": "8"}]}
+    )
+
+    collection = to_feature_collection(data.vehicles, data.last_update)
+
+    assert collection.features[0].properties.type == "tram"

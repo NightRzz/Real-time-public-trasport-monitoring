@@ -2,6 +2,7 @@ from datetime import datetime
 
 from app.models import RawVehicle
 from app.schemas import PointGeometry, VehicleFeature, VehicleFeatureCollection, VehicleProperties
+from app.vehicle_type import detect_vehicle_type
 
 
 def vehicle_to_feature(vehicle: RawVehicle) -> VehicleFeature:
@@ -11,7 +12,7 @@ def vehicle_to_feature(vehicle: RawVehicle) -> VehicleFeature:
         properties=VehicleProperties(
             vehicle_id=vehicle.vehicle_id,
             line=vehicle.line,
-            type="bus",
+            type=detect_vehicle_type(vehicle.line),
             headsign=vehicle.headsign,
             speed=vehicle.speed,
             direction=vehicle.direction,
