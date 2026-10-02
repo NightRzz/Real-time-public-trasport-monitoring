@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import type { GeoJSONSource } from 'maplibre-gl'
 import { useMap } from '../map/MapContext'
 import type { VehicleCollection } from '../types/vehicle'
 
@@ -33,6 +34,11 @@ export function VehicleLayer({ data }: VehicleLayerProps) {
       if (map.getSource(VEHICLES_SOURCE)) map.removeSource(VEHICLES_SOURCE)
     }
   }, [map])
+
+  useEffect(() => {
+    if (!map) return
+    map.getSource<GeoJSONSource>(VEHICLES_SOURCE)?.setData(data)
+  }, [map, data])
 
   return null
 }

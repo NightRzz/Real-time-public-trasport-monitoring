@@ -28,12 +28,14 @@ const data: VehicleCollection = {
 }
 
 function createMap() {
+  const source = { setData: vi.fn() }
   return {
+    source,
     style: {},
     addSource: vi.fn(),
     addLayer: vi.fn(),
     getLayer: vi.fn(() => true),
-    getSource: vi.fn(() => true),
+    getSource: vi.fn(() => source),
     removeLayer: vi.fn(),
     removeSource: vi.fn(),
   }
@@ -51,6 +53,25 @@ describe('VehicleLayer', () => {
 
     expect(map.addSource).toHaveBeenCalledWith(VEHICLES_SOURCE, { type: 'geojson', data })
     expect(map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: VEHICLES_LAYER }))
+  })
+
+  it('updates source when new data arrives', () => {
+    const map = createMap()
+    const next: VehicleCollection = { ...data, features: [], last_update: '2026-10-02T12:00:10Z' }
+
+    const { rerender } = render(
+      <MapContext.Provider value={map as unknown as MapLibreMap}>
+        <VehicleLayer data={data} />
+      </MapContext.Provider>,
+    )
+    rerender(
+      <MapContext.Provider value={map as unknown as MapLibreMap}>
+        <VehicleLayer data={next} />
+      </MapContext.Provider>,
+    )
+
+    expect(map.source.setData).toHaveBeenLastCalledWith(next)
+    expect(map.addSource).toHaveBeenCalledTimes(1)
   })
 
   it('cleans up layer on unmount', () => {
