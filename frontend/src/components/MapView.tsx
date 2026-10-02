@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Map as MapLibreMap, NavigationControl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { Box } from '@mui/material'
+import { Alert, Box } from '@mui/material'
 import { GDANSK_CENTER, GDANSK_ZOOM, MAX_ZOOM, MIN_ZOOM, TRICITY_BOUNDS } from '../constants/map'
+import { MapContext } from '../map/MapContext'
 import { OPENFREEMAP_STYLE, removePoiLayers } from '../map/style'
 
 export interface MapViewState {
@@ -15,6 +16,7 @@ export interface MapViewProps {
   center?: [number, number]
   zoom?: number
   onViewChange?: (view: MapViewState) => void
+  children?: ReactNode
 }
 
 export function MapView({
@@ -22,10 +24,13 @@ export function MapView({
   center = GDANSK_CENTER,
   zoom = GDANSK_ZOOM,
   onViewChange,
+  children,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const initialView = useRef({ center, zoom })
   const onViewChangeRef = useRef(onViewChange)
+  const [map, setMap] = useState<MapLibreMap | null>(null)
+  const [styleFailed, setStyleFailed] = useState(false)
 
   useEffect(() => {
     onViewChangeRef.current = onViewChange
@@ -33,7 +38,7 @@ export function MapView({
 
   useEffect(() => {
     if (!containerRef.current) return
-    const map = new MapLibreMap({
+    const instance = new MapLibreMap({
       container: containerRef.current,
       center: initialView.current.center,
       zoom: initialView.current.zoom,
@@ -41,14 +46,48 @@ export function MapView({
       maxZoom: MAX_ZOOM,
       maxBounds: TRICITY_BOUNDS,
     })
-    map.setStyle(styleUrl, { transformStyle: (_, next) => removePoiLayers(next) })
-    map.addControl(new NavigationControl(), 'top-right')
-    map.on('moveend', () => {
-      const { lng, lat } = map.getCenter()
-      onViewChangeRef.current?.({ center: [lng, lat], zoom: map.getZoom() })
+    instance.setStyle(styleUrl, { transformStyle: (_, next) => removePoiLayers(next) })
+    instance.addControl(new NavigationControl(), 'top-right')
+    let loaded = false
+    instance.on('load', () => {
+      loaded = true
+      setStyleFailed(false)
+      setMap(instance)
     })
-    return () => map.remove()
+    instance.on('error', () => {
+      if (!loaded) setStyleFailed(true)
+    })
+    instance.on('moveend', () => {
+      const { lng, lat } = instance.getCenter()
+      onViewChangeRef.current?.({ center: [lng, lat], zoom: instance.getZoom() })
+    })
+    return () => {
+      setMap(null)
+      setStyleFailed(false)
+      instance.remove()
+    }
   }, [styleUrl])
 
-  return <Box ref={containerRef} data-testid="map" sx={{ position: 'absolute', inset: 0 }} />
+  return (
+    <MapContext.Provider value={map}>
+      <Box ref={containerRef} data-testid="map" sx={{ position: 'absolute', inset: 0 }} />
+      {styleFailed && (
+        <Alert
+          severity="warning"
+          sx={{
+            position: 'absolute',
+            top: 56,
+            left: 12,
+            right: 12,
+            zIndex: 2,
+            mx: 'auto',
+            maxWidth: 480,
+          }}
+        >
+          Nie udało się załadować mapy. Sprawdź połączenie z internetem i odśwież stronę.
+        </Alert>
+      )}
+      {map && children}
+    </MapContext.Provider>
+  )
 }

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MapView } from './MapView'
 
@@ -51,5 +51,34 @@ describe('MapView', () => {
     handlers.moveend()
 
     expect(onViewChange).toHaveBeenCalledWith({ center: [18.6, 54.4], zoom: 14 })
+  })
+
+  it('renders children only after map is loaded', () => {
+    render(
+      <MapView>
+        <span>layer</span>
+      </MapView>,
+    )
+
+    expect(screen.queryByText('layer')).not.toBeInTheDocument()
+    act(() => handlers.load())
+    expect(screen.getByText('layer')).toBeInTheDocument()
+  })
+
+  it('shows warning when map style fails to load', () => {
+    render(<MapView />)
+
+    act(() => handlers.error())
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Nie udało się załadować mapy')
+  })
+
+  it('ignores tile errors after map is loaded', () => {
+    render(<MapView />)
+
+    act(() => handlers.load())
+    act(() => handlers.error())
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
