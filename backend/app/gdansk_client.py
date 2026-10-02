@@ -16,9 +16,14 @@ class GdanskApiError(Exception):
 
 
 class GdanskClient:
-    def __init__(self, base_url: str = GPS_POSITIONS_URL, timeout: float = 5.0) -> None:
+    def __init__(
+        self,
+        base_url: str = GPS_POSITIONS_URL,
+        timeout: float = 5.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self._url = base_url
-        self._client = httpx.AsyncClient(timeout=timeout)
+        self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
 
     async def fetch_positions(self) -> GpsPositionsResponse:
         try:
@@ -28,7 +33,7 @@ class GdanskClient:
         except httpx.TimeoutException as exc:
             logger.warning("gdansk api timeout: %s", exc)
             raise GdanskApiError("timeout") from exc
-        except (httpx.HTTPError, ValidationError, KeyError, ValueError) as exc:
+        except (httpx.HTTPError, ValidationError, KeyError, TypeError, ValueError) as exc:
             logger.warning("gdansk api error: %s", exc)
             raise GdanskApiError(str(exc)) from exc
 
