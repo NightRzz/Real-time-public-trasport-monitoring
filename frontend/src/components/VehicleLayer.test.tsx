@@ -3,7 +3,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { describe, expect, it, vi } from 'vitest'
 import { MapContext } from '../map/MapContext'
 import type { VehicleCollection } from '../types/vehicle'
-import { VEHICLES_LAYER, VEHICLES_SOURCE, VehicleLayer } from './VehicleLayer'
+import { VEHICLES_LABEL_LAYER, VEHICLES_LAYER, VEHICLES_SOURCE, VehicleLayer } from './VehicleLayer'
 
 const data: VehicleCollection = {
   type: 'FeatureCollection',
@@ -42,7 +42,7 @@ function createMap() {
 }
 
 describe('VehicleLayer', () => {
-  it('adds geojson source and circle layer', () => {
+  it('adds geojson source, circle and line label layers', () => {
     const map = createMap()
 
     render(
@@ -53,6 +53,12 @@ describe('VehicleLayer', () => {
 
     expect(map.addSource).toHaveBeenCalledWith(VEHICLES_SOURCE, { type: 'geojson', data })
     expect(map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: VEHICLES_LAYER }))
+    expect(map.addLayer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: VEHICLES_LABEL_LAYER,
+        layout: expect.objectContaining({ 'text-field': ['get', 'line'] }),
+      }),
+    )
   })
 
   it('updates source when new data arrives', () => {
@@ -84,6 +90,7 @@ describe('VehicleLayer', () => {
     )
     unmount()
 
+    expect(map.removeLayer).toHaveBeenCalledWith(VEHICLES_LABEL_LAYER)
     expect(map.removeLayer).toHaveBeenCalledWith(VEHICLES_LAYER)
     expect(map.removeSource).toHaveBeenCalledWith(VEHICLES_SOURCE)
   })
