@@ -12,3 +12,7 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+playwright-report/
+test-results/
+blob-report/
