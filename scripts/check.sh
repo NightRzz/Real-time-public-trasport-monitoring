@@ -7,3 +7,8 @@ echo "== backend =="
 
 echo "== frontend =="
 (cd frontend && npm run lint && npm run format:check && npm test && npm run build)
+
+if [[ "${1:-}" == "--e2e" ]]; then
+  echo "== e2e =="
+  (cd frontend && npm run test:e2e)
+fi

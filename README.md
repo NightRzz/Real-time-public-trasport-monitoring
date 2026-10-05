@@ -76,8 +76,11 @@ cd frontend
 npm run lint
 npm run format:check
 npm test
+npm run test:e2e
 ```
+
+Testy e2e (Playwright) same budują aplikację i stawiają `vite preview`, backend jest mockowany w testach. Za pierwszym razem trzeba doinstalować przeglądarkę: `npx playwright install --with-deps chromium`.
 
 Endpointy można też sprawdzić w Postmanie – kolekcja jest w `backend/postman/`.
 
-Wszystko naraz (lint + testy + build obu części): `./scripts/check.sh` (na Windowsie przez WSL albo Git Bash).
+Wszystko naraz (lint + testy + build obu części): `./scripts/check.sh` (na Windowsie przez WSL albo Git Bash), a razem z e2e: `./scripts/check.sh --e2e`.
