@@ -22,6 +22,10 @@ const data: VehicleCollection = {
       geometry: { type: 'Point', coordinates: [18.6, 54.35] },
       properties: {
         vehicle_id: 1,
+        vehicle_code: '1001',
+        route_id: 8,
+        trip_id: 11,
+        scheduled_trip_start_time: '2026-10-02T11:30:00Z',
         line: '8',
         type: 'tram',
         headsign: 'Jelitkowo',
@@ -48,10 +52,31 @@ function createMap() {
     getSource: vi.fn(() => source),
     removeLayer: vi.fn(),
     removeSource: vi.fn(),
+    setPaintProperty: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    getCanvas: vi.fn(() => ({ style: { cursor: '' } })),
   }
 }
 
 describe('VehicleLayer', () => {
+  it('selects a vehicle from a map click and removes listeners on unmount', () => {
+    const map = createMap()
+    const onSelect = vi.fn()
+    const { unmount } = render(
+      <MapContext.Provider value={map as unknown as MapLibreMap}>
+        <VehicleLayer data={data} onSelect={onSelect} />
+      </MapContext.Provider>,
+    )
+    const handler = map.on.mock.calls.find(([event]) => event === 'click')![2]
+    handler({ features: [{ properties: { vehicle_id: 1 } }] })
+    expect(onSelect).toHaveBeenCalledWith(1)
+    handler({ features: [] })
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    unmount()
+    expect(map.off).toHaveBeenCalledWith('click', expect.any(Array), handler)
+  })
+
   it('adds geojson source, circle, direction and line label layers', () => {
     const map = createMap()
 

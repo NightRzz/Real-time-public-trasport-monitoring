@@ -1,5 +1,7 @@
 import type { Page, Route } from '@playwright/test'
 
+const scheduledTripStartTime = new Date(Date.now() - 600_000).toISOString()
+
 export function vehicle(id: number, line: string, type: 'bus' | 'tram', lon: number, lat: number) {
   return {
     type: 'Feature',
@@ -7,6 +9,10 @@ export function vehicle(id: number, line: string, type: 'bus' | 'tram', lon: num
     geometry: { type: 'Point', coordinates: [lon, lat] },
     properties: {
       vehicle_id: id,
+      vehicle_code: String(1000 + id),
+      route_id: Number(line),
+      trip_id: 11,
+      scheduled_trip_start_time: scheduledTripStartTime,
       line,
       type,
       headsign: 'Dworzec Główny',

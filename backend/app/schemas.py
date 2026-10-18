@@ -13,6 +13,10 @@ class PointGeometry(BaseModel):
 
 class VehicleProperties(BaseModel):
     vehicle_id: int
+    vehicle_code: str | None = None
+    route_id: int | None = None
+    trip_id: int | None = None
+    scheduled_trip_start_time: datetime | None = None
     line: str
     type: VehicleType
     headsign: str | None = None
@@ -20,6 +24,39 @@ class VehicleProperties(BaseModel):
     direction: float | None = None
     delay: int | None = None
     timestamp: datetime
+
+
+class LineGeometry(BaseModel):
+    type: Literal["LineString"] = "LineString"
+    coordinates: list[tuple[float, float]]
+
+
+class RouteFeature(BaseModel):
+    type: Literal["Feature"] = "Feature"
+    geometry: LineGeometry
+    properties: dict[str, str | int]
+
+
+class RouteStop(BaseModel):
+    stop_id: int
+    name: str
+    code: str | None = None
+
+
+class NextStop(BaseModel):
+    stop: RouteStop
+    estimated_time: datetime
+    prediction_updated_at: datetime
+
+
+class VehicleJourney(BaseModel):
+    vehicle_id: int
+    route_id: int | None
+    trip_id: int | None
+    route: RouteFeature | None = None
+    next_stop: NextStop | None = None
+    route_status: Literal["available", "unavailable", "error"] = "unavailable"
+    prediction_status: Literal["available", "unavailable", "stale", "error"] = "unavailable"
 
 
 class VehicleFeature(BaseModel):

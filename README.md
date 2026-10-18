@@ -5,6 +5,7 @@ Celem projektu jest dostarczenie mieszkańcom Gdańska i turystom aplikacji webo
 
 ## Główne cele
 * Śledzenie autobusów i tramwajów na żywo na interaktywnej mapie.
+* Po kliknięciu pojazdu: pełna trasa kursu oraz wysuwany od dołu panel z następnym przystankiem, prognozą ZTM, prędkością i punktualnością.
 * Wyświetlanie aktualnej prędkości pojazdów oraz opóźnień względem oficjalnego rozkładu.
 * Czysty, responsywny interfejs zoptymalizowany pod kątem szybkiego ładowania.
 
@@ -60,7 +61,12 @@ Przykłady są w `backend/.env.example` i `frontend/.env.example`. W Dockerze ba
 
 ## API
 * `GET /health` – zwraca `{"status": "ok"}`
-* `GET /api/vehicles` – pozycje pojazdów jako GeoJSON `FeatureCollection` (współrzędne w kolejności `[lon, lat]`, właściwości: `vehicle_id`, `line`, `type` (`bus`/`tram`), `headsign`, `speed`, `delay`, `timestamp`)
+* `GET /api/vehicles` – pozycje pojazdów jako GeoJSON `FeatureCollection` (współrzędne w kolejności `[lon, lat]`, właściwości: `vehicle_id`, `vehicle_code`, `route_id`, `trip_id`, `scheduled_trip_start_time`, `line`, `type` (`bus`/`tram`), `headsign`, `speed`, `direction`, `delay`, `timestamp`)
+* `GET /api/vehicles/{vehicle_id}/journey` – pełna trasa jako GeoJSON `Feature` i najbliższa dostępna prognoza ZTM dla tego pojazdu i kursu; `404`, gdy pojazdu nie ma już w buforze GPS. Odpowiedź rozróżnia brak danych, nieaktualną prognozę i błąd źródła. Frontend odpytuje ten endpoint co 10 s wyłącznie dla otwartego panelu.
+
+Trasy pobieramy z `https://ckan2.multimediagdansk.pl/shapes?date={YYYY-MM-DD}&routeId={routeId}&tripId={tripId}`. Nazwy i kolejność przystanków pochodzą z zasobów `stops.json` i `stopsintrip.json` w [oficjalnym zbiorze ZTM](https://ckan.multimediagdansk.pl/pl/dataset/tristar). Backend przechowuje geometrię w pamięci do 6 godzin, a dane przystanków do godziny, osobno dla każdej daty w strefie `Europe/Warsaw`. Pierwsze otwarcie panelu wymaga pobrania dużych plików statycznych.
+
+Prognozy pochodzą z `https://ckan2.multimediagdansk.pl/departures` (wspólny cache 20 s). Dopasowanie wymaga zgodności `vehicleId`, `routeId`, `tripId` i `scheduledTripStartTime`; odrzucamy prognozy przeterminowane oraz dane GPS/prognozy starsze niż 90 s. Panel wybiera pierwszy przystanek w kolejności trasy z dostępną, przyszłą prognozą ZTM. Niepełne tablice nie pozwalają zagwarantować, że jest to fizycznie następny przystanek — panel nazywa go przystankiem z prognozą. Czas dotyczy prognozowanego odjazdu; nie wyliczamy go z prędkości GPS. Przy braku wiarygodnej prognozy panel pokazuje brak danych. Brak przystanków lub prognozy nie blokuje wyświetlania dostępnej geometrii.
 
 ## Testy i lint
 Backend:

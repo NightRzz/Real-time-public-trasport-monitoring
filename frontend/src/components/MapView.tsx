@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Map as MapLibreMap, NavigationControl } from 'maplibre-gl'
+import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl'
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Alert, Box } from '@mui/material'
 import { GDANSK_CENTER, GDANSK_ZOOM, MAX_ZOOM, MIN_ZOOM, TRICITY_BOUNDS } from '../constants/map'
 import { MapContext } from '../map/MapContext'
 import { OPENFREEMAP_STYLE, removePoiLayers } from '../map/style'
+
+// MapLibre v6 needs an explicit bundled worker URL in Vite production builds.
+setWorkerUrl(workerUrl)
 
 export interface MapViewState {
   center: [number, number]
@@ -70,7 +74,12 @@ export function MapView({
 
   return (
     <MapContext.Provider value={map}>
-      <Box ref={containerRef} data-testid="map" sx={{ position: 'absolute', inset: 0 }} />
+      <Box
+        ref={containerRef}
+        data-testid="map"
+        data-loaded={!!map}
+        sx={{ position: 'absolute', inset: 0 }}
+      />
       {styleFailed && (
         <Alert
           severity="warning"

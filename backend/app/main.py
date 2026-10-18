@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import router as api_router
 from app.config import get_settings
 from app.gdansk_client import GdanskClient
+from app.journeys import JourneyService
 from app.poller import GpsPoller
 from app.store import VehicleStore
 
@@ -21,12 +22,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     store = VehicleStore()
     poller = GpsPoller(client, store, interval=settings.poll_interval_seconds)
     app.state.store = store
+    journeys = JourneyService(timeout=settings.gdansk_api_timeout_seconds)
+    app.state.journeys = journeys
     poller.start()
     try:
         yield
     finally:
         await poller.stop()
         await client.close()
+        await journeys.close()
 
 
 app = FastAPI(

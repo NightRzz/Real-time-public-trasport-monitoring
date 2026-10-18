@@ -11,6 +11,10 @@ def vehicle_to_feature(vehicle: RawVehicle) -> VehicleFeature:
         geometry=PointGeometry(coordinates=(vehicle.lon, vehicle.lat)),
         properties=VehicleProperties(
             vehicle_id=vehicle.vehicle_id,
+            vehicle_code=vehicle.vehicle_code,
+            route_id=vehicle.route_id,
+            trip_id=vehicle.trip_id,
+            scheduled_trip_start_time=vehicle.scheduled_trip_start_time,
             line=vehicle.line,
             type=detect_vehicle_type(vehicle.line),
             headsign=vehicle.headsign,

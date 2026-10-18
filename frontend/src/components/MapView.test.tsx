@@ -18,6 +18,7 @@ const mapMock = vi.hoisted(() => ({
     }
   }),
   NavigationControl: vi.fn(),
+  setWorkerUrl: vi.fn(),
 }))
 
 vi.mock('maplibre-gl', () => mapMock)

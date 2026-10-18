@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { GeoJSONSource } from 'maplibre-gl'
+import type { GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl'
 import { useMap } from '../map/MapContext'
 import {
   BUS_COLOR,
@@ -21,9 +21,11 @@ export const VEHICLES_DIRECTION_LAYER = 'vehicles-direction'
 
 interface VehicleLayerProps {
   data: VehicleCollection
+  onSelect?: (vehicleId: number) => void
+  selectedId?: number | null
 }
 
-export function VehicleLayer({ data }: VehicleLayerProps) {
+export function VehicleLayer({ data, onSelect, selectedId }: VehicleLayerProps) {
   const map = useMap()
   const initialData = useRef(data)
 
@@ -68,6 +70,46 @@ export function VehicleLayer({ data }: VehicleLayerProps) {
     if (!map) return
     map.getSource<GeoJSONSource>(VEHICLES_SOURCE)?.setData(data)
   }, [map, data])
+
+  useEffect(() => {
+    if (!map || !onSelect) return
+    const select = (event: MapLayerMouseEvent) => {
+      const id = event.features?.[0]?.properties?.vehicle_id
+      if (typeof id === 'number') onSelect(id)
+    }
+    const enter = () => {
+      map.getCanvas().style.cursor = 'pointer'
+    }
+    const leave = () => {
+      map.getCanvas().style.cursor = ''
+    }
+    const layers = [VEHICLES_LAYER, VEHICLES_LABEL_LAYER, VEHICLES_DIRECTION_LAYER]
+    map.on('click', layers, select)
+    map.on('mouseenter', layers, enter)
+    map.on('mouseleave', layers, leave)
+    return () => {
+      map.off('click', layers, select)
+      map.off('mouseenter', layers, enter)
+      map.off('mouseleave', layers, leave)
+      leave()
+    }
+  }, [map, onSelect])
+
+  useEffect(() => {
+    if (!map) return
+    map.setPaintProperty(VEHICLES_LAYER, 'circle-stroke-color', [
+      'case',
+      ['==', ['get', 'vehicle_id'], selectedId ?? -1],
+      '#172b4d',
+      '#ffffff',
+    ])
+    map.setPaintProperty(VEHICLES_LAYER, 'circle-stroke-width', [
+      'case',
+      ['==', ['get', 'vehicle_id'], selectedId ?? -1],
+      4,
+      1.5,
+    ])
+  }, [map, selectedId])
 
   return null
 }

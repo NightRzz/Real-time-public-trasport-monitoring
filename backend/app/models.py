@@ -19,6 +19,9 @@ class RawVehicle(BaseModel):
     line: str = Field(alias="routeShortName")
     route_id: int | None = Field(default=None, alias="routeId")
     trip_id: int | None = Field(default=None, alias="tripId")
+    scheduled_trip_start_time: UtcDatetime | None = Field(
+        default=None, alias="scheduledTripStartTime"
+    )
     headsign: str | None = None
     lat: float
     lon: float
