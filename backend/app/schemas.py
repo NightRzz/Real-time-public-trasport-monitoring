@@ -43,6 +43,36 @@ class RouteStop(BaseModel):
     code: str | None = None
 
 
+class StopProperties(RouteStop):
+    type: Literal["bus", "tram", "bus_tram"]
+
+
+class StopFeature(BaseModel):
+    type: Literal["Feature"] = "Feature"
+    id: int
+    geometry: PointGeometry
+    properties: StopProperties
+
+
+class StopFeatureCollection(BaseModel):
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    features: list[StopFeature]
+
+
+class StopArrival(BaseModel):
+    line: str
+    type: VehicleType
+    headsign: str
+    time: datetime
+    realtime: bool
+    updated_at: datetime
+
+
+class StopArrivals(BaseModel):
+    arrivals: list[StopArrival] = []
+    status: Literal["available", "unavailable", "stale"] = "unavailable"
+
+
 class NextStop(BaseModel):
     stop: RouteStop
     estimated_time: datetime
@@ -54,6 +84,7 @@ class VehicleJourney(BaseModel):
     route_id: int | None
     trip_id: int | None
     route: RouteFeature | None = None
+    stop_ids: list[int] | None = None
     next_stop: NextStop | None = None
     route_status: Literal["available", "unavailable", "error"] = "unavailable"
     prediction_status: Literal["available", "unavailable", "stale", "error"] = "unavailable"

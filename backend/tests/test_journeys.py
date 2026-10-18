@@ -32,6 +32,9 @@ async def check():
         scheduledTripStartTime=now.isoformat(),
         timestamp=now.isoformat(),
         estimatedTime=(now + timedelta(minutes=4)).isoformat(),
+        theoreticalTime=(now + timedelta(minutes=5)).isoformat(),
+        routeShortName="8",
+        headsign="Jelitkowo",
     )
     boards = {
         str(i): dict(lastUpdate=now.isoformat(), departures=[dict(departure)]) for i in (1, 2)
@@ -50,7 +53,24 @@ async def check():
             "shapes": dict(type="LineString", coordinates=[[18.6, 54.35], [18.7, 54.4]]),
             "stops.json": {
                 date: {
-                    "stops": [dict(stopId=i, stopName=f"Stop {i}", stopCode="01") for i in (1, 2)]
+                    "stops": [
+                        dict(
+                            stopId=i,
+                            stopName=f"Stop {i}",
+                            stopCode="01",
+                            type="TRAM",
+                            stopLon=18.6,
+                            stopLat=54.35,
+                        )
+                        for i in (1, 2)
+                    ]
+                    + [
+                        dict(stopId=3, type="UNKNOWN"),
+                        dict(stopId=4, type="BUS", virtual=1),
+                        dict(stopId=5, type="BUS", nonpassenger=1),
+                        dict(stopId=6, type="BUS", depot=1),
+                        dict(stopId=7, type="BUS", stopLon="nan", stopLat=54.35),
+                    ]
                 }
             },
             "stopsintrip.json": {
@@ -58,6 +78,11 @@ async def check():
                     "stopsInTrip": [
                         dict(routeId=8, tripId=11, stopId=i, stopSequence=i, passenger=True)
                         for i in (2, 1)
+                    ]
+                    + [
+                        dict(routeId=8, tripId=12, stopId=3, stopSequence=1, passenger=True),
+                        dict(routeId=9, tripId=11, stopId=3, stopSequence=1, passenger=True),
+                        dict(routeId=8, tripId=11, stopId=4, stopSequence=0, passenger=True),
                     ]
                 }
             },
@@ -80,8 +105,19 @@ async def check():
         assert a == b and all(count == 1 for count in calls.values())
         assert a.next_stop.stop.stop_id == 1  # Route order wins over an inconsistent earlier ETA.
         assert a.route.geometry.coordinates == [(18.6, 54.35), (18.7, 54.4)]
+        assert a.stop_ids == [1, 2]  # Exact variant: exclude opposite direction and depot stops.
         assert not {"stops", "service_date"} & a.model_dump().keys()
         assert set(a.next_stop.stop.model_dump()) == {"stop_id", "name", "code"}
+        stops = await service.get_stops(now)
+        assert [stop.id for stop in stops.features] == [1, 2]
+        assert stops.features[0].properties.type == "tram"
+        assert stops.features[0].geometry.coordinates == (18.6, 54.35)
+        assert calls["stops.json"] == 1  # Same catalog as vehicle predictions.
+        arrivals = await service.get_stop_arrivals(1, now)
+        assert arrivals.status == "available" and arrivals.arrivals[0].realtime
+        assert arrivals.arrivals[0].time == now + timedelta(minutes=4)
+        assert calls["departures"] == 1  # Shared with vehicle predictions.
+        assert (await service.get_stop_arrivals(99, now)).status == "unavailable"
     finally:
         await service.close()
 
@@ -124,7 +160,31 @@ async def check():
         result = await journey()
         assert (result.route is None) == (source == "shapes")
         assert (result.next_stop is None) == (source != "shapes")
+        assert result.stop_ids == (None if source in {"stops.json", "stopsintrip.json"} else [1, 2])
         failures.clear()
+
+    service = JourneyService(transport=httpx.MockTransport(handler))
+    try:
+        boards["1"]["departures"] = [
+            {
+                **departure,
+                "status": "SCHEDULED",
+                "estimatedTime": (now + timedelta(hours=1)).isoformat(),
+            },
+            {**departure, "estimatedTime": (now - timedelta(seconds=1)).isoformat()},
+            {**departure, "timestamp": (now - timedelta(minutes=5)).isoformat()},
+            {**departure, "estimatedTime": (now + timedelta(minutes=1)).isoformat()},
+        ]
+        arrivals = await service.get_stop_arrivals(1, now)
+        assert [a.time for a in arrivals.arrivals] == [
+            now + timedelta(minutes=1),
+            now + timedelta(minutes=5),
+        ]
+        assert [a.realtime for a in arrivals.arrivals] == [True, False]
+        assert (await service.get_stop_arrivals(1, now + timedelta(minutes=2))).status == "stale"
+    finally:
+        await service.close()
+        boards["1"]["departures"] = [departure]
     calls.clear()
     assert (await journey(vehicle.model_copy(update={"trip_id": None}))).route is None
     assert not calls

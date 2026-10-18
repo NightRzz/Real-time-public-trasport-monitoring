@@ -5,7 +5,9 @@ Celem projektu jest dostarczenie mieszkańcom Gdańska i turystom aplikacji webo
 
 ## Główne cele
 * Śledzenie autobusów i tramwajów na żywo na interaktywnej mapie.
-* Po kliknięciu pojazdu: pełna trasa kursu oraz wysuwany od dołu panel z następnym przystankiem, prognozą ZTM, prędkością i punktualnością.
+* Po kliknięciu pojazdu: pełna trasa kursu ze strzałkami kierunku i wysuwany od dołu panel z następnym przystankiem, prognozą ZTM, prędkością i punktualnością. Pozostałe pojazdy są ukryte do zamknięcia panelu; wybór pojazdu nie zmienia przybliżenia ani położenia mapy.
+* Przystanki ZTM po przybliżeniu mapy (zoom 14,32+): ikony Material autobusu i tramwaju, nazwa i kod stanowiska oraz najbliższe odjazdy z odliczaniem. Czerwony oznacza tramwaj, niebieski autobus; wspólne przystanki mają obie ikony. Symbole przystanków z mapy bazowej są ukryte.
+* Podczas oglądania trasy pojazdu tylko przystanki jego wariantu kursu zachowują kolory i pozostają widoczne po oddaleniu mapy. Pozostałe, także stanowiska w przeciwnym kierunku, są szare i znikają poniżej zwykłego progu przybliżenia. Dopasowanie korzysta z identyfikatorów ZTM; brak danych o przystankach nie powoduje zgadywania kierunku.
 * Wyświetlanie aktualnej prędkości pojazdów oraz opóźnień względem oficjalnego rozkładu.
 * Czysty, responsywny interfejs zoptymalizowany pod kątem szybkiego ładowania.
 
@@ -63,6 +65,8 @@ Przykłady są w `backend/.env.example` i `frontend/.env.example`. W Dockerze ba
 * `GET /health` – zwraca `{"status": "ok"}`
 * `GET /api/vehicles` – pozycje pojazdów jako GeoJSON `FeatureCollection` (współrzędne w kolejności `[lon, lat]`, właściwości: `vehicle_id`, `vehicle_code`, `route_id`, `trip_id`, `scheduled_trip_start_time`, `line`, `type` (`bus`/`tram`), `headsign`, `speed`, `direction`, `delay`, `timestamp`)
 * `GET /api/vehicles/{vehicle_id}/journey` – pełna trasa jako GeoJSON `Feature` i najbliższa dostępna prognoza ZTM dla tego pojazdu i kursu; `404`, gdy pojazdu nie ma już w buforze GPS. Odpowiedź rozróżnia brak danych, nieaktualną prognozę i błąd źródła. Frontend odpytuje ten endpoint co 10 s wyłącznie dla otwartego panelu.
+* `GET /api/stops` – pasażerskie przystanki autobusowe, tramwajowe i wspólne z oficjalnego katalogu ZTM jako GeoJSON; pomija przystanki wirtualne, zajezdnie i rekordy bez określonego typu lub poprawnych współrzędnych.
+* `GET /api/stops/{stop_id}/arrivals` – do 8 najbliższych odjazdów, posortowanych według czasu, z linią, kierunkiem i oznaczeniem prognozy lub rozkładu. Wykorzystuje wspólny cache prognoz 20 s; frontend odświeża co 10 s tylko wybrany przystanek. Nieaktualne dane nie wyświetlają odliczania. Brak tablicy w źródle jest odróżniony od pustej listy odjazdów; błędy źródła zwracają `503`.
 
 Trasy pobieramy z `https://ckan2.multimediagdansk.pl/shapes?date={YYYY-MM-DD}&routeId={routeId}&tripId={tripId}`. Nazwy i kolejność przystanków pochodzą z zasobów `stops.json` i `stopsintrip.json` w [oficjalnym zbiorze ZTM](https://ckan.multimediagdansk.pl/pl/dataset/tristar). Backend przechowuje geometrię w pamięci do 6 godzin, a dane przystanków do godziny, osobno dla każdej daty w strefie `Europe/Warsaw`. Pierwsze otwarcie panelu wymaga pobrania dużych plików statycznych.
 

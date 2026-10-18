@@ -11,7 +11,20 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from app.models import RawVehicle
-from app.schemas import LineGeometry, NextStop, RouteFeature, RouteStop, VehicleJourney
+from app.schemas import (
+    LineGeometry,
+    NextStop,
+    PointGeometry,
+    RouteFeature,
+    RouteStop,
+    StopArrival,
+    StopArrivals,
+    StopFeature,
+    StopFeatureCollection,
+    StopProperties,
+    VehicleJourney,
+)
+from app.vehicle_type import detect_vehicle_type
 
 logger = logging.getLogger(__name__)
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -89,6 +102,82 @@ class JourneyService:
 
         return await self._static.get((url, date), 3600, load)
 
+    async def _stop_catalog(self, date: str) -> dict[int, dict]:
+        return {
+            stop["stopId"]: stop
+            for stop in await self._daily(STOPS_URL, date, "stops")
+            if not (stop.get("nonpassenger") or stop.get("virtual") or stop.get("depot"))
+        }
+
+    async def get_stops(self, now: datetime | None = None) -> StopFeatureCollection:
+        date = (now or datetime.now(UTC)).astimezone(WARSAW).date().isoformat()
+        features = []
+        for stop in (await self._stop_catalog(date)).values():
+            if stop.get("type") not in {"BUS", "TRAM", "BUS_TRAM"}:
+                continue
+            try:
+                lon, lat = float(stop["stopLon"]), float(stop["stopLat"])
+                if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+                    raise ValueError("Invalid stop coordinates")
+                features.append(
+                    StopFeature(
+                        id=stop["stopId"],
+                        geometry=PointGeometry(coordinates=(lon, lat)),
+                        properties=StopProperties(
+                            stop_id=stop["stopId"],
+                            name=stop["stopName"],
+                            code=stop.get("stopCode"),
+                            type=stop["type"].lower(),
+                        ),
+                    )
+                )
+            except (KeyError, TypeError, ValueError):
+                logger.warning("Invalid stop record: %s", stop.get("stopId"))
+        return StopFeatureCollection(features=features)
+
+    async def get_stop_arrivals(self, stop_id: int, now: datetime | None = None) -> StopArrivals:
+        now = now or datetime.now(UTC)
+        payload = await self._departures.get("all", 20, lambda: self._json(DEPARTURES_URL))
+        board = payload.get(str(stop_id))
+        if not isinstance(board, dict):
+            return StopArrivals()
+        updated = parse_time(board.get("lastUpdate"))
+        if not updated:
+            return StopArrivals()
+        if not is_fresh(updated, now):
+            return StopArrivals(status="stale")
+        arrivals, stale = [], False
+        for departure in board.get("departures", []):
+            status = departure.get("status")
+            if status not in {"REALTIME", "SCHEDULED"}:
+                continue
+            time = parse_time(
+                departure.get("estimatedTime" if status == "REALTIME" else "theoreticalTime")
+            )
+            timestamp = parse_time(departure.get("timestamp"))
+            if not time or time < now or not timestamp:
+                continue
+            if not is_fresh(timestamp, now):
+                stale = True
+                continue
+            line, headsign = departure.get("routeShortName"), departure.get("headsign")
+            if not isinstance(line, str) or not line.strip() or not isinstance(headsign, str):
+                continue
+            arrivals.append(
+                StopArrival(
+                    line=line,
+                    type=detect_vehicle_type(line),
+                    headsign=headsign,
+                    time=time,
+                    realtime=status == "REALTIME",
+                    updated_at=min(updated, timestamp),
+                )
+            )
+        return StopArrivals(
+            arrivals=sorted(arrivals, key=lambda arrival: arrival.time)[:8],
+            status="stale" if stale and not arrivals else "available",
+        )
+
     async def _route(self, vehicle: RawVehicle, date: str) -> RouteFeature | None:
         async def load() -> RouteFeature | None:
             try:
@@ -114,11 +203,10 @@ class JourneyService:
         return await self._shapes.get((date, vehicle.route_id, vehicle.trip_id), 21600, load)
 
     async def _stops(self, vehicle: RawVehicle, date: str) -> list[RouteStop]:
-        stops, order = await asyncio.gather(
-            self._daily(STOPS_URL, date, "stops"),
+        by_id, order = await asyncio.gather(
+            self._stop_catalog(date),
             self._daily(STOP_ORDER_URL, date, "stopsInTrip"),
         )
-        by_id = {stop["stopId"]: stop for stop in stops}
         result = []
         # ponytail: scan the day's variants per selection; index by route/trip if traffic grows.
         entries = [
@@ -130,7 +218,7 @@ class JourneyService:
         ]
         for entry in sorted(entries, key=lambda entry: entry["stopSequence"]):
             stop = by_id.get(entry["stopId"])
-            if not stop or stop.get("nonpassenger") or stop.get("virtual") or stop.get("depot"):
+            if not stop:
                 continue
             result.append(
                 RouteStop(
@@ -142,14 +230,13 @@ class JourneyService:
         return result
 
     async def _next_stop(
-        self, vehicle: RawVehicle, date: str, now: datetime
+        self, vehicle: RawVehicle, stops: list[RouteStop], now: datetime
     ) -> tuple[NextStop | None, str]:
         if not is_fresh(vehicle.timestamp, now):
             return None, "stale"
         # A vehicle can run the same variant again later. Never borrow that trip's prediction.
         if vehicle.scheduled_trip_start_time is None:
             return None, "unavailable"
-        stops = await self._stops(vehicle, date)
         if not stops:
             return None, "unavailable"
         payload = await self._departures.get("all", 20, lambda: self._json(DEPARTURES_URL))
@@ -192,9 +279,15 @@ class JourneyService:
         )
         if vehicle.route_id is None or vehicle.trip_id is None:
             return result
+
+        async def load_prediction() -> tuple[NextStop | None, str]:
+            stops = await self._stops(vehicle, date)
+            result.stop_ids = [stop.stop_id for stop in stops]
+            return await self._next_stop(vehicle, stops, now)
+
         # Geometry remains usable if the stop catalog or prediction feed is unavailable.
         route, prediction = await asyncio.gather(
-            self._route(vehicle, date), self._next_stop(vehicle, date, now), return_exceptions=True
+            self._route(vehicle, date), load_prediction(), return_exceptions=True
         )
         if isinstance(route, BaseException):
             if isinstance(route, asyncio.CancelledError):

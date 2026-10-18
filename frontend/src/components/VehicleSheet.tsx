@@ -1,11 +1,10 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import type { RefObject } from 'react'
 import {
   Alert,
   Box,
   Chip,
   CircularProgress,
   Divider,
-  Drawer,
   IconButton,
   Stack,
   Typography,
@@ -15,6 +14,7 @@ import DirectionsBusIcon from '@mui/icons-material/DirectionsBus'
 import TramIcon from '@mui/icons-material/Tram'
 import type { VehicleFeature, VehicleJourney } from '../types/vehicle'
 import { STALE_AFTER_MS } from './LastUpdate'
+import { DetailsSheet } from './DetailsSheet'
 
 interface VehicleSheetProps {
   open: boolean
@@ -45,25 +45,6 @@ export function VehicleSheet({
   onClose,
   paperRef,
 }: VehicleSheetProps) {
-  const closeRef = useRef<HTMLButtonElement>(null)
-  const id = vehicle?.properties.vehicle_id
-  useEffect(() => {
-    if (!open) return
-    const previousFocus = document.activeElement as HTMLElement | null
-    const paper = paperRef.current
-    closeRef.current?.focus({ preventScroll: true })
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', escape)
-    return () => {
-      window.removeEventListener('keydown', escape)
-      if (paper?.contains(document.activeElement)) {
-        previousFocus?.focus({ preventScroll: true })
-      }
-    }
-  }, [open, id, onClose, paperRef])
-
   const props = vehicle?.properties
   const stale = !props || now - Date.parse(props.timestamp) > STALE_AFTER_MS
   const next = journey?.next_stop
@@ -74,32 +55,7 @@ export function VehicleSheet({
   const delay = props?.delay
 
   return (
-    <Drawer
-      anchor="bottom"
-      variant="persistent"
-      open={open}
-      slotProps={{
-        paper: {
-          ref: paperRef,
-          role: 'dialog',
-          'aria-labelledby': 'vehicle-sheet-title',
-          sx: {
-            left: 0,
-            right: 0,
-            mx: 'auto',
-            width: '100%',
-            maxWidth: 560,
-            bottom: { xs: 0, sm: 20 },
-            borderRadius: '20px 20px 0 0',
-            borderBottomLeftRadius: { sm: 20 },
-            borderBottomRightRadius: { sm: 20 },
-            boxShadow: '0 -4px 32px rgba(0,0,0,0.18)',
-            maxHeight: 'min(65dvh, calc(100dvh - 200px))',
-            pb: 'env(safe-area-inset-bottom)',
-          },
-        },
-      }}
-    >
+    <DetailsSheet open={open} titleId="vehicle-sheet-title" onClose={onClose} paperRef={paperRef}>
       {props && (
         <Box sx={{ p: { xs: 2.5, sm: 3 }, pt: 1 }}>
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
@@ -123,7 +79,7 @@ export function VehicleSheet({
                 {props.headsign || `Linia ${props.line}`}
               </Typography>
             </Box>
-            <IconButton ref={closeRef} aria-label="Zamknij szczegóły pojazdu" onClick={onClose}>
+            <IconButton aria-label="Zamknij szczegóły pojazdu" onClick={onClose}>
               <CloseIcon />
             </IconButton>
           </Stack>
@@ -212,6 +168,6 @@ export function VehicleSheet({
           )}
         </Box>
       )}
-    </Drawer>
+    </DetailsSheet>
   )
 }

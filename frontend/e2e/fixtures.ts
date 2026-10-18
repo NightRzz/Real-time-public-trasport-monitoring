@@ -42,4 +42,7 @@ export async function mockVehicles(
     route.fulfill({ json: collection() }),
 ) {
   await page.route('**/api/vehicles', handler)
+  await page.route('**/api/stops', (route) =>
+    route.fulfill({ json: { type: 'FeatureCollection', features: [] } }),
+  )
 }

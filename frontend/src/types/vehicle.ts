@@ -28,6 +28,7 @@ export interface VehicleJourney {
   route_id: number | null
   trip_id: number | null
   route: Feature<LineString> | null
+  stop_ids: number[] | null
   next_stop: {
     stop: { stop_id: number; name: string; code: string | null }
     estimated_time: string

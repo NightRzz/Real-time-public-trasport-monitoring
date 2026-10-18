@@ -70,3 +70,19 @@ def test_journey_endpoint_uses_current_vehicle(client):
     assert response.status_code == 200
     assert response.json()["next_stop"] is None
     app.state.journeys.get_journey.assert_awaited_once_with(data.vehicles[0])
+
+
+def test_stop_endpoints_report_upstream_errors_and_validate_ids(client):
+    from unittest.mock import AsyncMock
+
+    import httpx
+
+    app.state.journeys = AsyncMock()
+    app.state.journeys.get_stops.side_effect = httpx.TimeoutException("upstream unavailable")
+    app.state.journeys.get_stop_arrivals.side_effect = httpx.TimeoutException(
+        "upstream unavailable"
+    )
+    assert client.get("/api/stops").status_code == 503
+    assert client.get("/api/stops/1/arrivals").status_code == 503
+    for stop_id in ("0", "-1", "bad"):
+        assert client.get(f"/api/stops/{stop_id}/arrivals").status_code == 422
