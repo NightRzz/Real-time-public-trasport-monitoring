@@ -5,9 +5,19 @@ test('shows header and interactive map', async ({ page }) => {
   await mockVehicles(page)
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Gdańsk na żywo' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Gdańsk · Komunikacja', exact: true }),
+  ).toBeVisible()
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Zoom in' })).toBeVisible()
+  await expect(page.getByRole('banner').getByText('3 pojazdów')).toBeVisible()
+  const header = (await page.getByRole('banner').boundingBox())!
+  const map = (await page.getByTestId('map').boundingBox())!
+  const zoom = (await page.getByRole('button', { name: 'Zoom in' }).boundingBox())!
+  expect(header.y).toBe(0)
+  expect(header.width).toBe(page.viewportSize()!.width)
+  expect(map.y).toBe(header.height)
+  expect(zoom.y).toBeGreaterThanOrEqual(map.y)
 })
 
 test('shows number of vehicles from backend', async ({ page }) => {

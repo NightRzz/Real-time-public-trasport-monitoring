@@ -86,7 +86,7 @@ export function VehicleSheet({
           <Divider sx={{ my: 2 }} />
           <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 2, minHeight: 98 }} aria-live="polite">
             <Typography variant="overline" color="text.secondary">
-              Najbliższy przystanek z prognozą ZTM
+              Najbliższy przystanek
             </Typography>
             {loading ? (
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -116,7 +116,7 @@ export function VehicleSheet({
                     color: 'secondary.main',
                   }}
                 >
-                  {seconds <= 30 ? 'Za chwilę' : `${minutes} min`}
+                  {seconds < 60 ? '<1m' : `${minutes} min`}
                 </Typography>
               </Stack>
             ) : (

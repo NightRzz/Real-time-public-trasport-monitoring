@@ -174,7 +174,7 @@ test('bus, tram and shared stops open the correct departures and expire stale co
     ).toBeVisible()
     await expect(sheet.getByText('Jelitkowo')).toBeVisible()
     await expect(sheet.getByText('2 min', { exact: true })).toBeVisible()
-    await expect(sheet.getByText(/Na żywo/)).toBeVisible()
+    await expect(sheet.getByText(/Na żywo/)).toHaveCount(0)
     await expect(sheet.getByText(/Rozkład/)).toBeVisible()
     await expect.poll(sample).toBeGreaterThan(unselectedPixels + 50)
     await sheet.getByRole('button', { name: 'Zamknij szczegóły przystanku' }).click()

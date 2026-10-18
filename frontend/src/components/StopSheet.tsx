@@ -83,8 +83,8 @@ export function StopSheet({
                           hour: '2-digit',
                           minute: '2-digit',
                           timeZone: 'Europe/Warsaw',
-                        })}{' '}
-                        · {arrival.realtime ? 'Na żywo' : 'Rozkład'}
+                        })}
+                        {!arrival.realtime && ' · Rozkład'}
                       </Typography>
                     </Box>
                     <Typography sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}>

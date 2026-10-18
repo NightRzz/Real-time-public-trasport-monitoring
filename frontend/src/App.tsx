@@ -48,7 +48,14 @@ function App() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Header />
+      <Header>
+        <LastUpdate
+          lastUpdate={data?.last_update}
+          vehicleCount={data?.features.length ?? 0}
+          offline={!!error}
+          now={now}
+        />
+      </Header>
       <Box component="main" sx={{ flex: 1, position: 'relative' }}>
         <MapView>
           {stops.data && (
@@ -73,12 +80,6 @@ function App() {
             vehicleType={selected?.properties.type}
           />
         </MapView>
-        <LastUpdate
-          lastUpdate={data?.last_update}
-          vehicleCount={data?.features.length ?? 0}
-          offline={!!error}
-          now={now}
-        />
         <VehicleStatus isLoading={isLoading} error={error} />
         {stops.isError && (
           <Alert

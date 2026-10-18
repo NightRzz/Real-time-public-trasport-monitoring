@@ -1,4 +1,4 @@
-import { Chip } from '@mui/material'
+import { Stack, Typography } from '@mui/material'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import UpdateIcon from '@mui/icons-material/Update'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
@@ -38,19 +38,18 @@ export function LastUpdate({ lastUpdate, vehicleCount, offline, now }: LastUpdat
   const warning = offline || stale
 
   return (
-    <Chip
-      icon={icon}
-      label={label}
-      color={warning ? 'warning' : 'default'}
-      size="small"
+    <Stack
+      direction="row"
+      spacing={0.75}
       sx={{
-        position: 'absolute',
-        top: 12,
-        left: 12,
-        zIndex: 1,
-        bgcolor: warning ? undefined : 'background.paper',
-        boxShadow: 1,
+        alignItems: 'center',
+        ml: 'auto',
+        color: warning ? 'warning.dark' : 'text.secondary',
+        '& .MuiSvgIcon-root': { fontSize: 16 },
       }}
-    />
+    >
+      {icon}
+      <Typography variant="caption">{label}</Typography>
+    </Stack>
   )
 }

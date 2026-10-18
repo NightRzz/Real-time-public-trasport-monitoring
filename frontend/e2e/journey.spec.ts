@@ -105,7 +105,7 @@ test('selection isolates a vehicle, preserves the view and draws repeated route 
   })
   await expect(sheet.getByText('Predicted stop 01')).toBeVisible()
   await expect(sheet.getByText('Wrong vehicle stop 01')).toHaveCount(0)
-  await expect(sheet.getByText('Za chwilę')).toBeVisible()
+  await expect(sheet.getByText('<1m', { exact: true })).toBeVisible()
 
   const painted = async (zoom: number) => {
     const screenshot = (
