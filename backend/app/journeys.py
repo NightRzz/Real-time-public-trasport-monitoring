@@ -11,7 +11,9 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from app.models import RawVehicle
+from app.progress import passed_stops
 from app.schemas import (
+    JourneyStop,
     LineGeometry,
     NextStop,
     PointGeometry,
@@ -74,6 +76,14 @@ def is_fresh(timestamp: datetime, now: datetime) -> bool:
     return -30 <= (now - timestamp).total_seconds() <= MAX_LIVE_AGE_SECONDS
 
 
+def stop_coordinates(stop: dict) -> tuple[float, float] | None:
+    try:
+        lon, lat = float(stop["stopLon"]), float(stop["stopLat"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (lon, lat) if -180 <= lon <= 180 and -90 <= lat <= 90 else None
+
+
 class JourneyService:
     def __init__(
         self, timeout: float = 5.0, transport: httpx.AsyncBaseTransport | None = None
@@ -115,14 +125,14 @@ class JourneyService:
         for stop in (await self._stop_catalog(date)).values():
             if stop.get("type") not in {"BUS", "TRAM", "BUS_TRAM"}:
                 continue
+            coordinates = stop_coordinates(stop)
             try:
-                lon, lat = float(stop["stopLon"]), float(stop["stopLat"])
-                if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+                if coordinates is None:
                     raise ValueError("Invalid stop coordinates")
                 features.append(
                     StopFeature(
                         id=stop["stopId"],
-                        geometry=PointGeometry(coordinates=(lon, lat)),
+                        geometry=PointGeometry(coordinates=coordinates),
                         properties=StopProperties(
                             stop_id=stop["stopId"],
                             name=stop["stopName"],
@@ -202,12 +212,11 @@ class JourneyService:
 
         return await self._shapes.get((date, vehicle.route_id, vehicle.trip_id), 21600, load)
 
-    async def _stops(self, vehicle: RawVehicle, date: str) -> list[RouteStop]:
+    async def _stops(self, vehicle: RawVehicle, date: str) -> list[dict]:
         by_id, order = await asyncio.gather(
             self._stop_catalog(date),
             self._daily(STOP_ORDER_URL, date, "stopsInTrip"),
         )
-        result = []
         # ponytail: scan the day's variants per selection; index by route/trip if traffic grows.
         entries = [
             entry
@@ -216,38 +225,32 @@ class JourneyService:
             and entry.get("tripId") == vehicle.trip_id
             and entry.get("passenger") is not False
         ]
-        for entry in sorted(entries, key=lambda entry: entry["stopSequence"]):
-            stop = by_id.get(entry["stopId"])
-            if not stop:
-                continue
-            result.append(
-                RouteStop(
-                    stop_id=stop["stopId"],
-                    name=stop["stopName"],
-                    code=stop.get("stopCode"),
-                )
-            )
-        return result
+        return [
+            by_id[entry["stopId"]]
+            for entry in sorted(entries, key=lambda entry: entry["stopSequence"])
+            if entry["stopId"] in by_id
+        ]
 
-    async def _next_stop(
+    async def _predictions(
         self, vehicle: RawVehicle, stops: list[RouteStop], now: datetime
-    ) -> tuple[NextStop | None, str]:
+    ) -> tuple[list[tuple[datetime, datetime] | None], str]:
+        """Return (estimated time, prediction timestamp) per stop in trip order, and a status."""
+        estimates: list[tuple[datetime, datetime] | None] = [None] * len(stops)
         if not is_fresh(vehicle.timestamp, now):
-            return None, "stale"
+            return estimates, "stale"
         # A vehicle can run the same variant again later. Never borrow that trip's prediction.
         if vehicle.scheduled_trip_start_time is None:
-            return None, "unavailable"
+            return estimates, "unavailable"
         if not stops:
-            return None, "unavailable"
+            return estimates, "unavailable"
         payload = await self._departures.get("all", 20, lambda: self._json(DEPARTURES_URL))
-        stale_match = False
-        # ponytail: incomplete boards reveal only the next available prediction, not route progress.
-        # Keep published stop order; GPS map matching would be needed to identify unreported stops.
-        for stop in stops:
+        stale_match, used = False, set()
+        for index, stop in enumerate(stops):
             board = payload.get(str(stop.stop_id), {})
             for departure in board.get("departures", []):
                 if (
-                    departure.get("vehicleId") != vehicle.vehicle_id
+                    id(departure) in used
+                    or departure.get("vehicleId") != vehicle.vehicle_id
                     or departure.get("routeId") != vehicle.route_id
                     or departure.get("tripId") != vehicle.trip_id
                     or departure.get("status") != "REALTIME"
@@ -264,10 +267,13 @@ class JourneyService:
                     stale_match = True
                     continue
                 if estimated and estimated >= now:
-                    return NextStop(
-                        stop=stop, estimated_time=estimated, prediction_updated_at=updated
-                    ), "available"
-        return None, "stale" if stale_match else "unavailable"
+                    estimates[index] = (estimated, updated)
+                    # A looping trip serves one stop twice; each visit takes its own departure.
+                    used.add(id(departure))
+                    break
+        if any(estimates):
+            return estimates, "available"
+        return estimates, "stale" if stale_match else "unavailable"
 
     async def get_journey(self, vehicle: RawVehicle, now: datetime | None = None) -> VehicleJourney:
         now = now or datetime.now(UTC)
@@ -280,10 +286,18 @@ class JourneyService:
         if vehicle.route_id is None or vehicle.trip_id is None:
             return result
 
-        async def load_prediction() -> tuple[NextStop | None, str]:
-            stops = await self._stops(vehicle, date)
+        coordinates: list[tuple[float, float] | None] = []
+
+        async def load_prediction() -> tuple[list[tuple[datetime, datetime] | None], str]:
+            records = await self._stops(vehicle, date)
+            stops = [
+                RouteStop(stop_id=stop["stopId"], name=stop["stopName"], code=stop.get("stopCode"))
+                for stop in records
+            ]
+            coordinates.extend(stop_coordinates(stop) for stop in records)
             result.stop_ids = [stop.stop_id for stop in stops]
-            return await self._next_stop(vehicle, stops, now)
+            result.stops = [JourneyStop(**stop.model_dump()) for stop in stops]
+            return await self._predictions(vehicle, stops, now)
 
         # Geometry remains usable if the stop catalog or prediction feed is unavailable.
         route, prediction = await asyncio.gather(
@@ -303,5 +317,23 @@ class JourneyService:
             logger.warning("prediction fetch failed: %s", prediction)
             result.prediction_status = "error"
         else:
-            result.next_stop, result.prediction_status = prediction
+            estimates, result.prediction_status = prediction
+            for stop, estimate in zip(result.stops or [], estimates, strict=True):
+                if estimate:
+                    stop.estimated_time = estimate[0]
+                    if result.next_stop is None:
+                        result.next_stop = NextStop(
+                            stop=RouteStop(**stop.model_dump(include=set(RouteStop.model_fields))),
+                            estimated_time=estimate[0],
+                            prediction_updated_at=estimate[1],
+                        )
+        if result.route and result.stops and is_fresh(vehicle.timestamp, now):
+            passed = passed_stops(
+                result.route.geometry.coordinates,
+                coordinates,
+                (vehicle.lon, vehicle.lat),
+                vehicle.direction,
+            )
+            for stop, flag in zip(result.stops, passed or [], strict=False):
+                stop.passed = flag
         return result

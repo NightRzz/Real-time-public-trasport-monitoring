@@ -40,6 +40,16 @@ test('selection isolates a vehicle, preserves the view and draws repeated route 
         ],
       },
     },
+    stop_ids: [1],
+    stops: [
+      {
+        stop_id: 1,
+        name: 'Predicted stop',
+        code: '01',
+        estimated_time: new Date(now + 20_000).toISOString(),
+        passed: false,
+      },
+    ],
     next_stop: {
       stop: { stop_id: 1, name: 'Predicted stop', code: '01' },
       estimated_time: new Date(now + 20_000).toISOString(),
@@ -97,6 +107,7 @@ test('selection isolates a vehicle, preserves the view and draws repeated route 
       ...response,
       vehicle_id: 1,
       route_id: 8,
+      stops: [{ ...response.stops[0], stop_id: 2, name: 'Wrong vehicle stop' }],
       next_stop: {
         ...response.next_stop,
         stop: { stop_id: 2, name: 'Wrong vehicle stop', code: '01' },
@@ -106,6 +117,7 @@ test('selection isolates a vehicle, preserves the view and draws repeated route 
   await expect(sheet.getByText('Predicted stop 01')).toBeVisible()
   await expect(sheet.getByText('Wrong vehicle stop 01')).toHaveCount(0)
   await expect(sheet.getByText('<1m', { exact: true })).toBeVisible()
+  await expect(sheet.getByText('Tramwaj jest tutaj')).toBeVisible()
 
   const painted = async (zoom: number) => {
     const screenshot = (
@@ -155,7 +167,7 @@ test('selection isolates a vehicle, preserves the view and draws repeated route 
   }
   // Expire the ETA, then wait for a prediction refresh: neither may change the chosen view.
   await page.clock.setSystemTime(new Date(now + 30_000))
-  await expect(sheet.getByText('Predicted stop 01')).toHaveCount(0)
+  await expect(sheet.getByText('<1m', { exact: true })).toHaveCount(0)
   await expect(sheet.getByText('Brak aktualnej prognozy dla tego kursu.')).toBeVisible()
   response.prediction_status = 'error'
   await expect(sheet.getByText(/Nie udało się pobrać prognozy/)).toBeVisible({ timeout: 15_000 })

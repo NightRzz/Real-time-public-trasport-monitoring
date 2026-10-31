@@ -106,8 +106,13 @@ async def check():
         assert a.next_stop.stop.stop_id == 1  # Route order wins over an inconsistent earlier ETA.
         assert a.route.geometry.coordinates == [(18.6, 54.35), (18.7, 54.4)]
         assert a.stop_ids == [1, 2]  # Exact variant: exclude opposite direction and depot stops.
-        assert not {"stops", "service_date"} & a.model_dump().keys()
+        assert "service_date" not in a.model_dump()
         assert set(a.next_stop.stop.model_dump()) == {"stop_id", "name", "code"}
+        assert [(s.name, s.passed) for s in a.stops] == [("Stop 1", False), ("Stop 2", False)]
+        assert [s.estimated_time for s in a.stops] == [
+            now + timedelta(minutes=4),
+            now + timedelta(minutes=1),
+        ]
         stops = await service.get_stops(now)
         assert [stop.id for stop in stops.features] == [1, 2]
         assert stops.features[0].properties.type == "tram"
@@ -152,15 +157,17 @@ async def check():
         assert (await journey()).prediction_status == "stale"
         for board in boards.values():
             board["lastUpdate"], board["departures"] = now.isoformat(), [departure]
-    assert (
-        await journey(vehicle.model_copy(update={"timestamp": now - timedelta(minutes=5)}))
-    ).prediction_status == "stale"
+    stale = await journey(vehicle.model_copy(update={"timestamp": now - timedelta(minutes=5)}))
+    assert stale.prediction_status == "stale"
+    assert [s.passed for s in stale.stops] == [None, None]  # An old GPS fix cannot place it.
     for source in ("stops.json", "stopsintrip.json", "departures", "shapes"):
         failures.add(source)
         result = await journey()
         assert (result.route is None) == (source == "shapes")
         assert (result.next_stop is None) == (source != "shapes")
         assert result.stop_ids == (None if source in {"stops.json", "stopsintrip.json"} else [1, 2])
+        if source == "departures":
+            assert [s.estimated_time for s in result.stops] == [None, None]
         failures.clear()
 
     service = JourneyService(transport=httpx.MockTransport(handler))

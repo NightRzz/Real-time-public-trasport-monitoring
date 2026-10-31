@@ -15,6 +15,7 @@ import TramIcon from '@mui/icons-material/Tram'
 import type { VehicleFeature, VehicleJourney } from '../types/vehicle'
 import { STALE_AFTER_MS } from './LastUpdate'
 import { DetailsSheet } from './DetailsSheet'
+import { RouteStops } from './RouteStops'
 
 interface VehicleSheetProps {
   open: boolean
@@ -25,14 +26,9 @@ interface VehicleSheetProps {
   now: number
   onClose: () => void
   paperRef: RefObject<HTMLDivElement | null>
-}
-
-function clockTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('pl-PL', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Warsaw',
-  })
+  highlightedStopId: number | null
+  onStopSelect: (stopId: number) => void
+  onVehicleSelect: () => void
 }
 
 export function VehicleSheet({
@@ -44,14 +40,20 @@ export function VehicleSheet({
   now,
   onClose,
   paperRef,
+  highlightedStopId,
+  onStopSelect,
+  onVehicleSelect,
 }: VehicleSheetProps) {
   const props = vehicle?.properties
   const stale = !props || now - Date.parse(props.timestamp) > STALE_AFTER_MS
   const next = journey?.next_stop
   const predictionStale = !!next && now - Date.parse(next.prediction_updated_at) > STALE_AFTER_MS
-  const seconds = next ? Math.ceil((Date.parse(next.estimated_time) - now) / 1000) : -1
-  const hasPrediction = !!next && !error && !stale && !predictionStale && seconds >= 0
-  const minutes = Math.ceil(seconds / 60)
+  const message =
+    error || journey?.prediction_status === 'error'
+      ? 'Nie udało się pobrać prognozy. Spróbujemy ponownie za chwilę.'
+      : stale || predictionStale || journey?.prediction_status === 'stale'
+        ? 'Dane nieaktualne — oczekiwanie na nową prognozę.'
+        : 'Brak aktualnej prognozy dla tego kursu.'
   const delay = props?.delay
 
   return (
@@ -84,48 +86,30 @@ export function VehicleSheet({
             </IconButton>
           </Stack>
           <Divider sx={{ my: 2 }} />
-          <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 2, minHeight: 98 }} aria-live="polite">
+          <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 2 }}>
             <Typography variant="overline" color="text.secondary">
-              Najbliższy przystanek
+              Trasa
             </Typography>
             {loading ? (
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                 <CircularProgress size={16} />
-                <Typography>Pobieranie prognozy…</Typography>
+                <Typography>Pobieranie trasy…</Typography>
               </Stack>
-            ) : hasPrediction ? (
-              <Stack
-                direction="row"
-                spacing={2}
-                sx={{ alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <Box>
-                  <Typography variant="h6" sx={{ lineHeight: 1.3 }}>
-                    {next.stop.name}
-                    {next.stop.code ? ` ${next.stop.code}` : ''}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Prognoza ZTM · {clockTime(next.estimated_time)}
-                  </Typography>
-                </Box>
-                <Typography
-                  sx={{
-                    fontSize: 28,
-                    fontWeight: 800,
-                    whiteSpace: 'nowrap',
-                    color: 'secondary.main',
-                  }}
-                >
-                  {seconds < 60 ? '<1m' : `${minutes} min`}
-                </Typography>
-              </Stack>
+            ) : journey?.stops?.length ? (
+              <RouteStops
+                key={props.vehicle_id}
+                stops={journey.stops}
+                type={props.type}
+                live={!error && !stale && !predictionStale}
+                now={now}
+                emptyMessage={message}
+                highlightedId={highlightedStopId}
+                onSelect={onStopSelect}
+                onVehicleSelect={onVehicleSelect}
+              />
             ) : (
-              <Typography variant="body2" color="text.secondary">
-                {error || journey?.prediction_status === 'error'
-                  ? 'Nie udało się pobrać prognozy. Spróbujemy ponownie za chwilę.'
-                  : stale || predictionStale || journey?.prediction_status === 'stale'
-                    ? 'Dane nieaktualne — oczekiwanie na nową prognozę.'
-                    : 'Brak aktualnej prognozy dla tego kursu.'}
+              <Typography role="status" variant="body2" color="text.secondary">
+                {message}
               </Typography>
             )}
           </Box>

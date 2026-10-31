@@ -23,12 +23,22 @@ export type VehicleCollection = FeatureCollection<Point, VehicleProperties> & {
 
 export type VehicleFeature = Feature<Point, VehicleProperties>
 
+export interface JourneyStop {
+  stop_id: number
+  name: string
+  code: string | null
+  estimated_time: string | null
+  /** Null when the vehicle cannot be placed on the route shape. */
+  passed: boolean | null
+}
+
 export interface VehicleJourney {
   vehicle_id: number
   route_id: number | null
   trip_id: number | null
   route: Feature<LineString> | null
   stop_ids: number[] | null
+  stops: JourneyStop[] | null
   next_stop: {
     stop: { stop_id: number; name: string; code: string | null }
     estimated_time: string

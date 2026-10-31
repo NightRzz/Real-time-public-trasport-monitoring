@@ -1,23 +1,23 @@
 import { expect, test } from '@playwright/test'
 import { collection, mockVehicles } from './fixtures'
 
-test('shows header and interactive map', async ({ page }) => {
+test('fills the screen with the map and a small status box', async ({ page }) => {
   await mockVehicles(page)
   await page.goto('/')
 
   await expect(
     page.getByRole('heading', { name: 'Gdańsk · Komunikacja', exact: true }),
-  ).toBeVisible()
+  ).toBeAttached()
+  await expect(page.getByRole('banner')).toHaveCount(0)
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Zoom in' })).toBeVisible()
-  await expect(page.getByRole('banner').getByText('3 pojazdów')).toBeVisible()
-  const header = (await page.getByRole('banner').boundingBox())!
+  const status = page.getByText('3 pojazdów')
+  await expect(status).toBeVisible()
   const map = (await page.getByTestId('map').boundingBox())!
+  const box = (await status.boundingBox())!
   const zoom = (await page.getByRole('button', { name: 'Zoom in' }).boundingBox())!
-  expect(header.y).toBe(0)
-  expect(header.width).toBe(page.viewportSize()!.width)
-  expect(map.y).toBe(header.height)
-  expect(zoom.y).toBeGreaterThanOrEqual(map.y)
+  expect(map).toMatchObject({ x: 0, y: 0, height: page.viewportSize()!.height })
+  expect(box.y).toBeLessThan(40)
+  expect(box.x + box.width).toBeLessThan(zoom.x)
 })
 
 test('shows number of vehicles from backend', async ({ page }) => {

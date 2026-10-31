@@ -15,11 +15,18 @@ export interface MapViewState {
   zoom: number
 }
 
+export interface MapFocus {
+  center?: [number, number]
+  /** Viewport y where the bottom sheet starts covering the map. */
+  sheetTop: number
+}
+
 export interface MapViewProps {
   styleUrl?: string
   center?: [number, number]
   zoom?: number
   onViewChange?: (view: MapViewState) => void
+  focus?: MapFocus | null
   children?: ReactNode
 }
 
@@ -28,6 +35,7 @@ export function MapView({
   center = GDANSK_CENTER,
   zoom = GDANSK_ZOOM,
   onViewChange,
+  focus,
   children,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -71,6 +79,18 @@ export function MapView({
       instance.remove()
     }
   }, [styleUrl])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!map || !container || !focus?.center) return
+    const { x, y } = map.project(focus.center)
+    const { width, height, bottom } = container.getBoundingClientRect()
+    const covered = Math.max(0, bottom - focus.sheetTop)
+    const margin = 32
+    if (x > margin && x < width - margin && y > margin && y < height - covered - margin) return
+    // Centre the point in the part of the map the sheet leaves uncovered.
+    map.easeTo({ center: map.unproject([x, y + covered / 2]) })
+  }, [map, focus])
 
   return (
     <MapContext.Provider value={map}>

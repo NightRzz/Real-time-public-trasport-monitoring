@@ -1,4 +1,4 @@
-import { Stack, Typography } from '@mui/material'
+import { Paper, Typography } from '@mui/material'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import UpdateIcon from '@mui/icons-material/Update'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
@@ -38,18 +38,27 @@ export function LastUpdate({ lastUpdate, vehicleCount, offline, now }: LastUpdat
   const warning = offline || stale
 
   return (
-    <Stack
-      direction="row"
-      spacing={0.75}
+    <Paper
+      elevation={0}
       sx={{
+        position: 'absolute',
+        top: 10,
+        left: 10,
+        zIndex: 1,
+        display: 'flex',
         alignItems: 'center',
-        ml: 'auto',
+        gap: 0.75,
+        px: 1,
+        py: 0.5,
+        borderRadius: 1,
+        // Matches the MapLibre zoom control in the opposite corner.
+        boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.1)',
         color: warning ? 'warning.dark' : 'text.secondary',
         '& .MuiSvgIcon-root': { fontSize: 16 },
       }}
     >
       {icon}
       <Typography variant="caption">{label}</Typography>
-    </Stack>
+    </Paper>
   )
 }

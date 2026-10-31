@@ -1,8 +1,7 @@
-import { Alert, Box } from '@mui/material'
+import { Alert, Box, Typography } from '@mui/material'
 import { useCallback, useRef, useState } from 'react'
-import { Header } from './components/Header'
 import { LastUpdate } from './components/LastUpdate'
-import { MapView } from './components/MapView'
+import { MapView, type MapFocus } from './components/MapView'
 import { VehicleLayer } from './components/VehicleLayer'
 import { VehicleStatus } from './components/VehicleStatus'
 import { VehicleSheet } from './components/VehicleSheet'
@@ -14,12 +13,16 @@ import { useStopArrivals, useStops } from './hooks/useStops'
 import { StopLayer } from './components/StopLayer'
 import { StopSheet } from './components/StopSheet'
 
+const topOf = (element: HTMLElement | null) =>
+  element?.getBoundingClientRect().top ?? window.innerHeight
+
 function App() {
   const { data, isLoading, error } = useVehicles()
   const now = useNow(5000)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [selectedStopId, setSelectedStopId] = useState<number | null>(null)
+  const [mapFocus, setMapFocus] = useState<(MapFocus & { stopId?: number }) | null>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
   const stopSheetRef = useRef<HTMLDivElement>(null)
   const stops = useStops()
@@ -31,37 +34,65 @@ function App() {
   const journey = useVehicleJourney(selected, panelOpen)
   const selectVehicle = useCallback((id: number) => {
     setSelectedStopId(null)
+    setMapFocus(null)
     setSelectedId(id)
     setPanelOpen(true)
   }, [])
-  const closePanel = useCallback(() => setPanelOpen(false), [])
+  const closePanel = useCallback(() => {
+    setPanelOpen(false)
+    setMapFocus(null)
+  }, [])
   const selectStop = useCallback((id: number) => {
     setPanelOpen(false)
+    setMapFocus(null)
     setSelectedStopId(id)
   }, [])
   const closeStop = useCallback(() => setSelectedStopId(null), [])
+  const focusRouteStop = useCallback(
+    (stopId: number) =>
+      setMapFocus({
+        stopId,
+        center: stops.data?.features.find((stop) => stop.properties.stop_id === stopId)?.geometry
+          .coordinates as [number, number] | undefined,
+        sheetTop: topOf(sheetRef.current),
+      }),
+    [stops.data],
+  )
+  const focusVehicle = useCallback(
+    () =>
+      setMapFocus({
+        center: selected?.geometry.coordinates as [number, number] | undefined,
+        sheetTop: topOf(sheetRef.current),
+      }),
+    [selected],
+  )
   const matchingJourney =
     journey.data?.route_id === selected?.properties.route_id &&
     journey.data?.trip_id === selected?.properties.trip_id
       ? journey.data
       : undefined
+  const focusedStop = panelOpen && selected ? mapFocus : null
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Header>
-        <LastUpdate
-          lastUpdate={data?.last_update}
-          vehicleCount={data?.features.length ?? 0}
-          offline={!!error}
-          now={now}
-        />
-      </Header>
-      <Box component="main" sx={{ flex: 1, position: 'relative' }}>
-        <MapView>
+    <Box sx={{ height: '100%' }}>
+      <Box component="main" sx={{ height: '100%', position: 'relative' }}>
+        <Typography
+          component="h1"
+          sx={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            overflow: 'hidden',
+            clip: 'rect(0 0 0 0)',
+          }}
+        >
+          Gdańsk · Komunikacja
+        </Typography>
+        <MapView focus={focusedStop}>
           {stops.data && (
             <StopLayer
               data={stops.data}
-              selectedId={selectedStopId}
+              selectedId={selectedStopId ?? focusedStop?.stopId ?? null}
               onSelect={selectStop}
               routeStopIds={
                 panelOpen && selected && matchingJourney?.route ? matchingJourney.stop_ids : null
@@ -80,6 +111,12 @@ function App() {
             vehicleType={selected?.properties.type}
           />
         </MapView>
+        <LastUpdate
+          lastUpdate={data?.last_update}
+          vehicleCount={data?.features.length ?? 0}
+          offline={!!error}
+          now={now}
+        />
         <VehicleStatus isLoading={isLoading} error={error} />
         {stops.isError && (
           <Alert
@@ -99,6 +136,9 @@ function App() {
         now={now}
         onClose={closePanel}
         paperRef={sheetRef}
+        highlightedStopId={focusedStop?.stopId ?? null}
+        onStopSelect={focusRouteStop}
+        onVehicleSelect={focusVehicle}
       />
       <StopSheet
         stop={selectedStop}

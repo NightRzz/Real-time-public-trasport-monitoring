@@ -73,6 +73,11 @@ class StopArrivals(BaseModel):
     status: Literal["available", "unavailable", "stale"] = "unavailable"
 
 
+class JourneyStop(RouteStop):
+    estimated_time: datetime | None = None
+    passed: bool | None = None
+
+
 class NextStop(BaseModel):
     stop: RouteStop
     estimated_time: datetime
@@ -85,6 +90,7 @@ class VehicleJourney(BaseModel):
     trip_id: int | None
     route: RouteFeature | None = None
     stop_ids: list[int] | None = None
+    stops: list[JourneyStop] | None = None
     next_stop: NextStop | None = None
     route_status: Literal["available", "unavailable", "error"] = "unavailable"
     prediction_status: Literal["available", "unavailable", "stale", "error"] = "unavailable"
