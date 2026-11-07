@@ -5,7 +5,7 @@ from app.config import Settings
 
 
 def test_default_interval():
-    assert Settings(_env_file=None).poll_interval_seconds == 12.0
+    assert Settings(_env_file=None).poll_interval_seconds == 1.0
 
 
 def test_interval_from_env(monkeypatch):

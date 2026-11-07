@@ -1,5 +1,5 @@
 export const DEFAULT_API_URL = 'http://localhost:8000'
-export const DEFAULT_POLL_INTERVAL_MS = 10000
+export const DEFAULT_POLL_INTERVAL_MS = 1000
 
 export function parsePollInterval(raw: string | undefined): number {
   const value = Number(raw)
