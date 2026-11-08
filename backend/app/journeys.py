@@ -165,7 +165,9 @@ class JourneyService:
                 departure.get("estimatedTime" if status == "REALTIME" else "theoreticalTime")
             )
             timestamp = parse_time(departure.get("timestamp"))
-            if not time or time < now or not timestamp:
+            if not time or not timestamp:
+                continue
+            if time < now and (status != "REALTIME" or (now - time).total_seconds() > 45):
                 continue
             if not is_fresh(timestamp, now):
                 stale = True

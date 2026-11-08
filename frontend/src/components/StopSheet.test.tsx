@@ -92,4 +92,37 @@ describe('StopSheet departure selection', () => {
     ])
     expect(screen.getByRole('button', { name: /Pozycja niedostępna/ })).toBeDisabled()
   })
+
+  it.each([0, 44, 45, 46])(
+    'keeps a live departure for at most 45 seconds after its ETA: %s',
+    (seconds) => {
+      view({ time: new Date(NOW - seconds * 1000).toISOString() })
+      expect(screen.queryByText('Za chwilę') !== null).toBe(seconds <= 45)
+    },
+  )
+
+  it('does not keep expired scheduled departures', () => {
+    view({ time: new Date(NOW - 10_000).toISOString(), realtime: false })
+    expect(screen.queryByText('Za chwilę')).not.toBeInTheDocument()
+  })
+
+  it('does not keep expired departures for a different trip', () => {
+    view({ time: new Date(NOW - 10_000).toISOString(), trip_id: 99 })
+    expect(screen.queryByText('Za chwilę')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { vehicles: [] as VehicleFeature[] },
+    {
+      vehicles: [
+        {
+          ...vehicle,
+          properties: { ...vehicle.properties, timestamp: new Date(NOW - 120_000).toISOString() },
+        },
+      ],
+    },
+  ])('does not keep expired departures without fresh GPS', ({ vehicles }) => {
+    view({ time: new Date(NOW - 10_000).toISOString() }, vehicles)
+    expect(screen.queryByText('Za chwilę')).not.toBeInTheDocument()
+  })
 })

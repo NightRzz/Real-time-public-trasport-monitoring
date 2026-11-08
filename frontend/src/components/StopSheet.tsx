@@ -42,11 +42,25 @@ export function StopSheet({
   const stale =
     data?.status === 'stale' ||
     data?.arrivals.some((arrival) => now - Date.parse(arrival.updated_at) > STALE_AFTER_MS)
+  const vehicleFor = (arrival: StopArrivals['arrivals'][number]) =>
+    arrival.realtime &&
+    vehicles.find(
+      ({ properties: v }) =>
+        v.vehicle_id === arrival.vehicle_id &&
+        v.route_id === arrival.route_id &&
+        v.trip_id === arrival.trip_id &&
+        !!v.scheduled_trip_start_time &&
+        !!arrival.scheduled_trip_start_time &&
+        Date.parse(v.scheduled_trip_start_time) === Date.parse(arrival.scheduled_trip_start_time) &&
+        now - Date.parse(v.timestamp) <= STALE_AFTER_MS,
+    )
   const arrivals = error
     ? []
     : (data?.arrivals ?? []).filter(
         (arrival) =>
-          Date.parse(arrival.time) >= now && now - Date.parse(arrival.updated_at) <= STALE_AFTER_MS,
+          (Date.parse(arrival.time) >= now ||
+            (Date.parse(arrival.time) >= now - 45_000 && vehicleFor(arrival))) &&
+          now - Date.parse(arrival.updated_at) <= STALE_AFTER_MS,
       )
 
   return (
@@ -77,19 +91,7 @@ export function StopSheet({
           ) : arrivals.length ? (
             <Stack divider={<Divider />}>
               {arrivals.map((arrival, index) => {
-                const vehicle =
-                  arrival.realtime &&
-                  vehicles.find(
-                    ({ properties: v }) =>
-                      v.vehicle_id === arrival.vehicle_id &&
-                      v.route_id === arrival.route_id &&
-                      v.trip_id === arrival.trip_id &&
-                      !!v.scheduled_trip_start_time &&
-                      !!arrival.scheduled_trip_start_time &&
-                      Date.parse(v.scheduled_trip_start_time) ===
-                        Date.parse(arrival.scheduled_trip_start_time) &&
-                      now - Date.parse(v.timestamp) <= STALE_AFTER_MS,
-                  )
+                const vehicle = vehicleFor(arrival)
                 const seconds = Math.ceil((Date.parse(arrival.time) - now) / 1000)
                 return (
                   <Stack

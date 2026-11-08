@@ -203,7 +203,7 @@ async def check():
                 "status": "SCHEDULED",
                 "estimatedTime": (now + timedelta(hours=1)).isoformat(),
             },
-            {**departure, "estimatedTime": (now - timedelta(seconds=1)).isoformat()},
+            {**departure, "estimatedTime": (now - timedelta(seconds=46)).isoformat()},
             {**departure, "timestamp": (now - timedelta(minutes=5)).isoformat()},
             {**departure, "estimatedTime": (now + timedelta(minutes=1)).isoformat()},
         ]
@@ -218,6 +218,22 @@ async def check():
     finally:
         await service.close()
         boards["1"]["departures"] = [departure]
+    for status, seconds in (("REALTIME", 45), ("REALTIME", 46), ("SCHEDULED", 1)):
+        boards["1"]["departures"] = [
+            {
+                **departure,
+                "status": status,
+                "estimatedTime": (now - timedelta(seconds=seconds)).isoformat(),
+                "theoreticalTime": (now - timedelta(seconds=seconds)).isoformat(),
+            }
+        ]
+        service = JourneyService(transport=httpx.MockTransport(handler))
+        try:
+            arrivals = await service.get_stop_arrivals(1, now)
+            assert len(arrivals.arrivals) == (1 if status == "REALTIME" and seconds == 45 else 0)
+        finally:
+            await service.close()
+    boards["1"]["departures"] = [departure]
     calls.clear()
     assert (await journey(vehicle.model_copy(update={"trip_id": None}))).route is None
     assert not calls
