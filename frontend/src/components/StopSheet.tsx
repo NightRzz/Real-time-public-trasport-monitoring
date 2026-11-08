@@ -1,9 +1,19 @@
-import { Box, Chip, CircularProgress, Divider, IconButton, Stack, Typography } from '@mui/material'
+import {
+  Box,
+  ButtonBase,
+  Chip,
+  CircularProgress,
+  Divider,
+  IconButton,
+  Stack,
+  Typography,
+} from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import DirectionsBusIcon from '@mui/icons-material/DirectionsBus'
 import TramIcon from '@mui/icons-material/Tram'
 import type { RefObject } from 'react'
 import type { StopArrivals, StopFeature } from '../types/stop'
+import type { VehicleFeature } from '../types/vehicle'
 import { DetailsSheet } from './DetailsSheet'
 import { STALE_AFTER_MS } from './LastUpdate'
 
@@ -15,8 +25,12 @@ export function StopSheet({
   now,
   onClose,
   paperRef,
+  vehicles,
+  onVehicleSelect,
 }: {
   stop: StopFeature | null
+  vehicles: VehicleFeature[]
+  onVehicleSelect: (id: number) => void
   data?: StopArrivals
   loading: boolean
   error: boolean
@@ -63,13 +77,29 @@ export function StopSheet({
           ) : arrivals.length ? (
             <Stack divider={<Divider />}>
               {arrivals.map((arrival, index) => {
+                const vehicle =
+                  arrival.realtime &&
+                  vehicles.find(
+                    ({ properties: v }) =>
+                      v.vehicle_id === arrival.vehicle_id &&
+                      v.route_id === arrival.route_id &&
+                      v.trip_id === arrival.trip_id &&
+                      !!v.scheduled_trip_start_time &&
+                      !!arrival.scheduled_trip_start_time &&
+                      Date.parse(v.scheduled_trip_start_time) ===
+                        Date.parse(arrival.scheduled_trip_start_time) &&
+                      now - Date.parse(v.timestamp) <= STALE_AFTER_MS,
+                  )
                 const seconds = Math.ceil((Date.parse(arrival.time) - now) / 1000)
                 return (
                   <Stack
                     key={`${arrival.line}-${arrival.time}-${index}`}
+                    component={ButtonBase}
+                    disabled={!vehicle}
+                    onClick={() => vehicle && onVehicleSelect(vehicle.properties.vehicle_id)}
                     direction="row"
                     spacing={1.5}
-                    sx={{ alignItems: 'center', py: 1.5 }}
+                    sx={{ alignItems: 'center', py: 1.5, width: '100%', textAlign: 'left' }}
                   >
                     <Chip
                       label={arrival.line}
@@ -85,6 +115,8 @@ export function StopSheet({
                           timeZone: 'Europe/Warsaw',
                         })}
                         {!arrival.realtime && ' · Rozkład'}
+                        {' · '}
+                        {vehicle ? 'Pokaż pojazd' : 'Pozycja niedostępna'}
                       </Typography>
                     </Box>
                     <Typography sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}>

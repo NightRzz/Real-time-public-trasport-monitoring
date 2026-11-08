@@ -2,6 +2,7 @@ import type { RefObject } from 'react'
 import {
   Alert,
   Box,
+  Button,
   Chip,
   CircularProgress,
   Divider,
@@ -10,6 +11,7 @@ import {
   Typography,
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import DirectionsBusIcon from '@mui/icons-material/DirectionsBus'
 import TramIcon from '@mui/icons-material/Tram'
 import type { VehicleFeature, VehicleJourney } from '../types/vehicle'
@@ -25,6 +27,7 @@ interface VehicleSheetProps {
   error: boolean
   now: number
   onClose: () => void
+  onBack?: () => void
   paperRef: RefObject<HTMLDivElement | null>
   highlightedStopId: number | null
   onStopSelect: (stopId: number) => void
@@ -39,6 +42,7 @@ export function VehicleSheet({
   error,
   now,
   onClose,
+  onBack,
   paperRef,
   highlightedStopId,
   onStopSelect,
@@ -60,6 +64,11 @@ export function VehicleSheet({
     <DetailsSheet open={open} titleId="vehicle-sheet-title" onClose={onClose} paperRef={paperRef}>
       {props && (
         <Box sx={{ p: { xs: 2.5, sm: 3 }, pt: 1 }}>
+          {onBack && (
+            <Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ mb: 1 }}>
+              Wróć do przystanku
+            </Button>
+          )}
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
             <Chip
               icon={props.type === 'tram' ? <TramIcon /> : <DirectionsBusIcon />}

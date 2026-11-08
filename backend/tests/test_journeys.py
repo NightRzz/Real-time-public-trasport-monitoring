@@ -121,6 +121,10 @@ async def check():
         arrivals = await service.get_stop_arrivals(1, now)
         assert arrivals.status == "available" and arrivals.arrivals[0].realtime
         assert arrivals.arrivals[0].time == now + timedelta(minutes=4)
+        assert arrivals.arrivals[0].vehicle_id == vehicle.vehicle_id
+        assert arrivals.arrivals[0].route_id == vehicle.route_id
+        assert arrivals.arrivals[0].trip_id == vehicle.trip_id
+        assert arrivals.arrivals[0].scheduled_trip_start_time == now
         assert calls["departures"] == 1  # Shared with vehicle predictions.
         assert (await service.get_stop_arrivals(99, now)).status == "unavailable"
     finally:
@@ -188,6 +192,7 @@ async def check():
             now + timedelta(minutes=5),
         ]
         assert [a.realtime for a in arrivals.arrivals] == [True, False]
+        assert [a.vehicle_id for a in arrivals.arrivals] == [7, None]
         assert (await service.get_stop_arrivals(1, now + timedelta(minutes=2))).status == "stale"
     finally:
         await service.close()

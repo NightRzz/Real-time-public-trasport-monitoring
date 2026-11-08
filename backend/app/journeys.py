@@ -175,6 +175,10 @@ class JourneyService:
                 continue
             arrivals.append(
                 StopArrival(
+                    vehicle_id=departure.get("vehicleId") if status == "REALTIME" else None,
+                    route_id=departure.get("routeId"),
+                    trip_id=departure.get("tripId"),
+                    scheduled_trip_start_time=parse_time(departure.get("scheduledTripStartTime")),
                     line=line,
                     type=detect_vehicle_type(line),
                     headsign=headsign,

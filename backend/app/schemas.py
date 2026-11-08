@@ -60,6 +60,10 @@ class StopFeatureCollection(BaseModel):
 
 
 class StopArrival(BaseModel):
+    vehicle_id: int | None = None
+    route_id: int | None = None
+    trip_id: int | None = None
+    scheduled_trip_start_time: datetime | None = None
     line: str
     type: VehicleType
     headsign: str

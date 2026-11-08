@@ -14,6 +14,10 @@ export type StopCollection = FeatureCollection<Point, StopProperties>
 export interface StopArrivals {
   status: 'available' | 'unavailable' | 'stale'
   arrivals: {
+    vehicle_id?: number | null
+    route_id?: number | null
+    trip_id?: number | null
+    scheduled_trip_start_time?: string | null
     line: string
     type: VehicleType
     headsign: string

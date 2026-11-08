@@ -47,6 +47,23 @@ function App() {
     setMapFocus(null)
     setSelectedStopId(id)
   }, [])
+  const selectArrivalVehicle = (id: number) => {
+    const vehicle = data?.features.find((feature) => feature.properties.vehicle_id === id)
+    if (!vehicle) return
+    setSelectedId(id)
+    setPanelOpen(true)
+    setMapFocus({
+      center: vehicle.geometry.coordinates as [number, number],
+      sheetTop: topOf(stopSheetRef.current),
+    })
+  }
+  const returnToStop = () => {
+    setPanelOpen(false)
+    setMapFocus({
+      center: selectedStop?.geometry.coordinates as [number, number] | undefined,
+      sheetTop: topOf(sheetRef.current),
+    })
+  }
   const closeStop = useCallback(() => setSelectedStopId(null), [])
   const focusRouteStop = useCallback(
     (stopId: number) =>
@@ -71,7 +88,7 @@ function App() {
     journey.data?.trip_id === selected?.properties.trip_id
       ? journey.data
       : undefined
-  const focusedStop = panelOpen && selected ? mapFocus : null
+  const focusedStop = (panelOpen && selected) || selectedStop ? mapFocus : null
 
   return (
     <Box sx={{ height: '100%' }}>
@@ -92,7 +109,7 @@ function App() {
           {stops.data && (
             <StopLayer
               data={stops.data}
-              selectedId={selectedStopId ?? focusedStop?.stopId ?? null}
+              selectedId={focusedStop?.stopId ?? selectedStopId ?? null}
               onSelect={selectStop}
               routeStopIds={
                 panelOpen && selected && matchingJourney?.route ? matchingJourney.stop_ids : null
@@ -135,13 +152,16 @@ function App() {
         error={journey.isError}
         now={now}
         onClose={closePanel}
+        onBack={selectedStop ? returnToStop : undefined}
         paperRef={sheetRef}
         highlightedStopId={focusedStop?.stopId ?? null}
         onStopSelect={focusRouteStop}
         onVehicleSelect={focusVehicle}
       />
       <StopSheet
-        stop={selectedStop}
+        stop={panelOpen && selected ? null : selectedStop}
+        vehicles={data?.features ?? []}
+        onVehicleSelect={selectArrivalVehicle}
         data={arrivals.data}
         loading={arrivals.isLoading}
         error={arrivals.isError}

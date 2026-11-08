@@ -1,5 +1,8 @@
-import { useEffect, type ReactNode, type RefObject } from 'react'
-import { Drawer } from '@mui/material'
+import { useEffect, useState, type ReactNode, type RefObject } from 'react'
+import { Box, ButtonBase, Drawer, IconButton } from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 
 export function DetailsSheet({
   open,
@@ -14,6 +17,9 @@ export function DetailsSheet({
   paperRef: RefObject<HTMLDivElement | null>
   children: ReactNode
 }) {
+  const [collapsed, setCollapsed] = useState(false)
+  const contentId = `${titleId}-content`
+
   useEffect(() => {
     if (!open) return
     const previousFocus = document.activeElement as HTMLElement | null
@@ -37,6 +43,7 @@ export function DetailsSheet({
       variant="persistent"
       open={open}
       slotProps={{
+        transition: { onExited: () => setCollapsed(false) },
         paper: {
           ref: paperRef,
           role: 'dialog',
@@ -58,7 +65,29 @@ export function DetailsSheet({
         },
       }}
     >
-      {children}
+      <Box sx={{ display: 'flex', flexShrink: 0 }}>
+        <ButtonBase
+          onClick={() => setCollapsed((value) => !value)}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          sx={{ flex: 1, minHeight: 44, gap: 1, color: 'text.secondary', typography: 'body2' }}
+        >
+          {collapsed ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          {collapsed ? 'Rozwiń panel' : 'Zwiń panel'}
+        </ButtonBase>
+        {collapsed && (
+          <IconButton
+            aria-label="Zamknij szczegóły"
+            onClick={onClose}
+            sx={{ width: 44, height: 44 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        )}
+      </Box>
+      <div id={contentId} hidden={collapsed}>
+        {children}
+      </div>
     </Drawer>
   )
 }
