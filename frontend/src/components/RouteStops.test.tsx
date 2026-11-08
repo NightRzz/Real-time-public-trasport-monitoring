@@ -16,12 +16,12 @@ function route(passed: number | null, estimates: Record<number, number> = {}): J
   }))
 }
 
-function view(stops: JourneyStop[], onSelect = vi.fn(), onVehicleSelect = vi.fn()) {
+function view(stops: JourneyStop[], onSelect = vi.fn(), onVehicleSelect = vi.fn(), live = true) {
   render(
     <RouteStops
       stops={stops}
       type="tram"
-      live
+      live={live}
       now={NOW}
       emptyMessage="Brak aktualnej prognozy dla tego kursu."
       highlightedId={null}
@@ -65,4 +65,22 @@ describe('RouteStops', () => {
     expect(screen.queryByText(/jest tutaj/)).not.toBeInTheDocument()
     expect(screen.getByText('2 przystanki wcześniej')).toBeInTheDocument()
   })
+
+  it.each([0, 44, 45, 46])('shows an expired prediction for at most 45 seconds: %s', (seconds) => {
+    view(route(3, { 3: -seconds / 60 }))
+    expect(screen.queryByText('Za chwilę') !== null).toBe(seconds <= 45)
+  })
+
+  it.each([
+    { stops: route(null, { 2: -0.5 }), live: true },
+    { stops: route(4, { 3: -0.5, 4: 2 }), live: true },
+    { stops: route(3, { 3: -0.5 }), live: false },
+    { stops: route(3), live: true },
+  ])(
+    'does not invent an imminent arrival without fresh GPS and a matching forecast',
+    ({ stops, live }) => {
+      view(stops, vi.fn(), vi.fn(), live)
+      expect(screen.queryByText('Za chwilę')).not.toBeInTheDocument()
+    },
+  )
 })

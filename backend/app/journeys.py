@@ -270,7 +270,7 @@ class JourneyService:
                 if not is_fresh(updated, now) or not is_fresh(board_updated, now):
                     stale_match = True
                     continue
-                if estimated and estimated >= now:
+                if estimated and (now - estimated).total_seconds() <= 45:
                     estimates[index] = (estimated, updated)
                     # A looping trip serves one stop twice; each visit takes its own departure.
                     used.add(id(departure))
@@ -315,22 +315,6 @@ class JourneyService:
         elif route:
             result.route = route
             result.route_status = "available"
-        if isinstance(prediction, BaseException):
-            if isinstance(prediction, asyncio.CancelledError):
-                raise prediction
-            logger.warning("prediction fetch failed: %s", prediction)
-            result.prediction_status = "error"
-        else:
-            estimates, result.prediction_status = prediction
-            for stop, estimate in zip(result.stops or [], estimates, strict=True):
-                if estimate:
-                    stop.estimated_time = estimate[0]
-                    if result.next_stop is None:
-                        result.next_stop = NextStop(
-                            stop=RouteStop(**stop.model_dump(include=set(RouteStop.model_fields))),
-                            estimated_time=estimate[0],
-                            prediction_updated_at=estimate[1],
-                        )
         if result.route and result.stops and is_fresh(vehicle.timestamp, now):
             passed = passed_stops(
                 result.route.geometry.coordinates,
@@ -340,4 +324,22 @@ class JourneyService:
             )
             for stop, flag in zip(result.stops, passed or [], strict=False):
                 stop.passed = flag
+        if isinstance(prediction, BaseException):
+            if isinstance(prediction, asyncio.CancelledError):
+                raise prediction
+            logger.warning("prediction fetch failed: %s", prediction)
+            result.prediction_status = "error"
+        else:
+            estimates, result.prediction_status = prediction
+            for stop, estimate in zip(result.stops or [], estimates, strict=True):
+                if estimate and (estimate[0] >= now or stop.passed is False):
+                    stop.estimated_time = estimate[0]
+                    if result.next_stop is None:
+                        result.next_stop = NextStop(
+                            stop=RouteStop(**stop.model_dump(include=set(RouteStop.model_fields))),
+                            estimated_time=estimate[0],
+                            prediction_updated_at=estimate[1],
+                        )
+        if result.prediction_status == "available" and result.next_stop is None:
+            result.prediction_status = "unavailable"
         return result

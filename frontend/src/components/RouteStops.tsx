@@ -64,7 +64,10 @@ export function RouteStops({
   const passed = stops.filter((stop) => stop.passed).length
   const timed = stops.map(
     (stop) =>
-      live && !stop.passed && !!stop.estimated_time && Date.parse(stop.estimated_time) >= now,
+      live &&
+      !stop.passed &&
+      !!stop.estimated_time &&
+      Date.parse(stop.estimated_time) >= now - (stop.passed === false ? 45_000 : 0),
   )
   const lead = timed.indexOf(true)
   const anchor = located ? passed : Math.max(lead, 0)
@@ -223,11 +226,15 @@ export function RouteStops({
                   </Box>
                   {index === lead ? (
                     <Typography sx={{ fontSize: 24, fontWeight: 800, whiteSpace: 'nowrap', color }}>
-                      {seconds < 60 ? '<1m' : `${Math.ceil(seconds / 60)} min`}
+                      {seconds <= 0
+                        ? 'Za chwilę'
+                        : seconds < 60
+                          ? '<1m'
+                          : `${Math.ceil(seconds / 60)} min`}
                     </Typography>
                   ) : timed[index] ? (
                     <Typography sx={{ fontWeight: 600 }}>
-                      {clockTime(stop.estimated_time!)}
+                      {seconds <= 0 ? 'Za chwilę' : clockTime(stop.estimated_time!)}
                     </Typography>
                   ) : (
                     !stop.passed && <Typography color="text.disabled">—</Typography>

@@ -130,6 +130,27 @@ async def check():
     finally:
         await service.close()
 
+    for seconds in (1, 45, 46):
+        for board in boards.values():
+            board["departures"] = [
+                {**departure, "estimatedTime": (now - timedelta(seconds=seconds)).isoformat()}
+            ]
+        result = await journey()
+        assert (result.next_stop is not None) == (seconds <= 45)
+        if seconds <= 45:
+            assert result.stops[0].estimated_time == now - timedelta(seconds=seconds)
+            for placement in ([True, True], None):
+                with patch("app.journeys.passed_stops", return_value=placement):
+                    expired = await journey()
+                assert expired.next_stop is None
+                assert all(stop.estimated_time is None for stop in expired.stops)
+                assert expired.prediction_status == "unavailable"
+    for board in boards.values():
+        board["departures"] = [departure]
+    boards["2"]["departures"] = [
+        {**departure, "estimatedTime": (now + timedelta(minutes=1)).isoformat()}
+    ]
+
     missing = boards.pop("1")
     assert (
         await journey()
@@ -142,7 +163,7 @@ async def check():
         ("routeId", 9),
         ("status", "SCHEDULED"),
         ("scheduledTripStartTime", (now + timedelta(hours=1)).isoformat()),
-        ("estimatedTime", (now - timedelta(seconds=1)).isoformat()),
+        ("estimatedTime", (now - timedelta(seconds=46)).isoformat()),
     ):
         for board in boards.values():
             board["departures"] = [{**departure, field: bad}]
