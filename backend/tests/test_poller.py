@@ -140,3 +140,23 @@ def test_startup_errors_back_off(monkeypatch):
     clock[0] = 30
     asyncio.run(poller.poll_once())
     assert poller._next_delay(30, 30) == 5
+
+
+def test_poller_shares_snapshot_and_only_leader_polls():
+    from app.broker import MemoryBroker
+    from app.store import SNAPSHOT_KEY, decode_snapshot
+
+    async def scenario():
+        broker = MemoryBroker()
+        data = GpsPositionsResponse.model_validate(SAMPLE)
+        leader = GpsPoller(FakeClient([data]), VehicleStore(), broker=broker, owner="a")
+        follower = GpsPoller(FakeClient([]), VehicleStore(), broker=broker, owner="b")
+        assert await leader.is_leader()
+        assert not await follower.is_leader()
+        await leader.poll_once()
+        cached = await broker.get(SNAPSHOT_KEY)
+        return decode_snapshot(cached[0])
+
+    vehicles, last_update = asyncio.run(scenario())
+    assert [v.vehicle_id for v in vehicles] == [145704]
+    assert last_update.year == 2026

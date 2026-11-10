@@ -1,17 +1,39 @@
 import asyncio
 import logging
 import time
+from datetime import datetime
+from uuid import uuid4
 
+from app.broker import Broker
 from app.gdansk_client import GdanskApiError, GdanskClient
-from app.store import VehicleStore
+from app.models import RawVehicle
+from app.store import (
+    SNAPSHOT_CHANNEL,
+    SNAPSHOT_KEY,
+    SNAPSHOT_TTL_SECONDS,
+    VehicleStore,
+    encode_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
+LEADER_KEY = "poller:leader"
+LEADER_TTL_SECONDS = 15.0
+
 
 class GpsPoller:
-    def __init__(self, client: GdanskClient, store: VehicleStore, interval: float = 1.0) -> None:
+    def __init__(
+        self,
+        client: GdanskClient,
+        store: VehicleStore,
+        interval: float = 1.0,
+        broker: Broker | None = None,
+        owner: str | None = None,
+    ) -> None:
         self._client = client
         self._store = store
+        self._broker = broker
+        self._owner = owner or uuid4().hex
         self._interval = interval
         self._task: asyncio.Task | None = None
         self._unchanged_since: float | None = None
@@ -29,6 +51,7 @@ class GpsPoller:
         if self._store.last_update is not None and data.last_update <= self._store.last_update:
             return
         self._store.update(data.vehicles, data.last_update)
+        await self._share(data.vehicles, data.last_update)
         now = time.monotonic()
         self._unchanged_since = now
         self._sleep_until = now + 16.0
@@ -36,6 +59,25 @@ class GpsPoller:
             logger.info("source updates resumed")
         self._delayed = False
         logger.info("fetched %d vehicles (lastUpdate=%s)", len(data.vehicles), data.last_update)
+
+    async def _share(self, vehicles: list[RawVehicle], last_update: datetime) -> None:
+        if self._broker is None:
+            return
+        try:
+            encoded = encode_snapshot(vehicles, last_update)
+            await self._broker.set(SNAPSHOT_KEY, encoded, SNAPSHOT_TTL_SECONDS)
+            await self._broker.publish(SNAPSHOT_CHANNEL, encoded)
+        except Exception:
+            logger.exception("could not share snapshot through broker")
+
+    async def is_leader(self) -> bool:
+        if self._broker is None:
+            return True
+        try:
+            return await self._broker.acquire(LEADER_KEY, self._owner, LEADER_TTL_SECONDS)
+        except Exception:
+            logger.exception("leader lock unavailable, polling locally")
+            return True
 
     def _next_delay(self, started: float, now: float) -> float:
         delayed = self._unchanged_since is not None and now - self._unchanged_since >= 30.0
@@ -49,7 +91,8 @@ class GpsPoller:
         while True:
             started = time.monotonic()
             try:
-                await self.poll_once()
+                if await self.is_leader():
+                    await self.poll_once()
             except Exception:
                 logger.exception("unexpected error while polling, will retry")
             await asyncio.sleep(self._next_delay(started, time.monotonic()))

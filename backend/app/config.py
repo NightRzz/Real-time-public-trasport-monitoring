@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     poll_interval_seconds: float = Field(default=1.0, ge=1)
     gdansk_api_timeout_seconds: float = Field(default=5.0, gt=0)
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    redis_url: str | None = None
 
     @property
     def cors_origin_list(self) -> list[str]:
