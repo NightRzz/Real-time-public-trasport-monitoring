@@ -263,3 +263,27 @@ def test_journeys():
 
 if __name__ == "__main__":
     test_journeys()
+
+
+def test_shared_cache_serves_second_instance_without_upstream():
+    import asyncio
+
+    from app.broker import MemoryBroker
+    from app.journeys import Cache
+
+    calls = []
+
+    async def load():
+        calls.append(1)
+        return {"value": 42}
+
+    async def scenario():
+        broker = MemoryBroker()
+        first = Cache(broker=broker, namespace="t")
+        second = Cache(broker=broker, namespace="t")
+        a = await first.get(("k", 1), 60, load)
+        b = await second.get(("k", 1), 60, load)
+        return a, b
+
+    assert asyncio.run(scenario()) == ({"value": 42}, {"value": 42})
+    assert calls == [1]

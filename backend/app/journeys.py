@@ -1,6 +1,7 @@
 """Published route geometry and vehicle-specific predictions from ZTM Gdansk."""
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -10,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from app.broker import Broker
 from app.models import RawVehicle
 from app.progress import passed_stops
 from app.schemas import (
@@ -43,23 +45,63 @@ MAX_LIVE_AGE_SECONDS = 90
 class Cache:
     """Bounded TTL cache; concurrent selections share upstream requests."""
 
-    def __init__(self, capacity: int = 128) -> None:
+    def __init__(
+        self,
+        capacity: int = 128,
+        broker: Broker | None = None,
+        namespace: str = "cache",
+        encode: Callable[[Any], Any] = lambda value: value,
+        decode: Callable[[Any], Any] = lambda value: value,
+    ) -> None:
         self._entries: dict[Any, tuple[float, Any]] = {}
         # ponytail: misses serialize per cache; use per-key locks if concurrent selections grow.
         self._lock = asyncio.Lock()
         self._capacity = capacity
+        self._broker = broker
+        self._namespace = namespace
+        self._encode = encode
+        self._decode = decode
+
+    def _remember(self, key: Any, ttl: float, value: Any) -> Any:
+        self._entries = {k: v for k, v in self._entries.items() if v[0] > monotonic()}
+        if len(self._entries) >= self._capacity:
+            self._entries.pop(next(iter(self._entries)))
+        self._entries[key] = (monotonic() + ttl, value)
+        return value
+
+    async def _shared(self, key: Any) -> tuple[Any, float] | None:
+        if self._broker is None:
+            return None
+        try:
+            found = await self._broker.get(f"{self._namespace}:{json.dumps(key)}")
+        except Exception:
+            logger.warning("shared cache read failed for %s", self._namespace)
+            return None
+        if found is None or found[1] is None:
+            return None
+        return self._decode(json.loads(found[0])), found[1]
+
+    async def _share(self, key: Any, ttl: float, value: Any) -> None:
+        if self._broker is None:
+            return
+        try:
+            encoded = json.dumps(self._encode(value))
+            await self._broker.set(f"{self._namespace}:{json.dumps(key)}", encoded, ttl)
+        except Exception:
+            logger.warning("shared cache write failed for %s", self._namespace)
 
     async def get(self, key: Any, ttl: float, load: Callable[[], Awaitable[Any]]) -> Any:
         async with self._lock:
             cached = self._entries.get(key)
             if cached and cached[0] > monotonic():
                 return cached[1]
+            shared = await self._shared(key)
+            if shared is not None:
+                value, remaining = shared
+                return self._remember(key, min(ttl, remaining), value)
             value = await load()
-            self._entries = {k: v for k, v in self._entries.items() if v[0] > monotonic()}
-            if len(self._entries) >= self._capacity:
-                self._entries.pop(next(iter(self._entries)))
-            self._entries[key] = (monotonic() + ttl, value)
-            return value
+            await self._share(key, ttl, value)
+            return self._remember(key, ttl, value)
 
 
 def parse_time(value: Any) -> datetime | None:
@@ -86,12 +128,21 @@ def stop_coordinates(stop: dict) -> tuple[float, float] | None:
 
 class JourneyService:
     def __init__(
-        self, timeout: float = 5.0, transport: httpx.AsyncBaseTransport | None = None
+        self,
+        timeout: float = 5.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+        broker: Broker | None = None,
     ) -> None:
         self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
-        self._static = Cache(capacity=4)
-        self._shapes = Cache()
-        self._departures = Cache(capacity=1)
+        self._static = Cache(capacity=4, broker=broker, namespace="static")
+        self._shapes = Cache(
+            capacity=512,
+            broker=broker,
+            namespace="shapes",
+            encode=lambda route: route.model_dump(mode="json") if route else None,
+            decode=lambda data: RouteFeature.model_validate(data) if data else None,
+        )
+        self._departures = Cache(capacity=1, broker=broker, namespace="departures")
 
     async def close(self) -> None:
         await self._client.aclose()

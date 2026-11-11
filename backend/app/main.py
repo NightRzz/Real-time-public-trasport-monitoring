@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     client = GdanskClient(timeout=settings.gdansk_api_timeout_seconds)
     store = VehicleStore()
     poller = GpsPoller(client, store, interval=settings.poll_interval_seconds, broker=broker)
-    journeys = JourneyService(timeout=settings.gdansk_api_timeout_seconds)
+    journeys = JourneyService(timeout=settings.gdansk_api_timeout_seconds, broker=broker)
     app.state.store = store
     app.state.journeys = journeys
     follower = asyncio.create_task(follow_snapshots(broker, store))
