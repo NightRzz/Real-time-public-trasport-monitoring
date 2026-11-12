@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     gdansk_api_timeout_seconds: float = Field(default=5.0, gt=0)
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     redis_url: str | None = None
+    live_tick_seconds: float = Field(default=1.0, ge=0.2)
+    overview_interval_seconds: float = Field(default=5.0, ge=1)
+    detail_min_zoom: float = Field(default=13.0, ge=0, le=22)
 
     @property
     def cors_origin_list(self) -> list[str]:

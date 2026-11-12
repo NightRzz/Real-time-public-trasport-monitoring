@@ -11,6 +11,7 @@ from app.broker import create_broker
 from app.config import get_settings
 from app.gdansk_client import GdanskClient
 from app.journeys import JourneyService
+from app.live import LiveFeed
 from app.poller import GpsPoller
 from app.store import VehicleStore
 from app.sync import follow_snapshots
@@ -26,13 +27,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     store = VehicleStore()
     poller = GpsPoller(client, store, interval=settings.poll_interval_seconds, broker=broker)
     journeys = JourneyService(timeout=settings.gdansk_api_timeout_seconds, broker=broker)
+    live = LiveFeed(
+        store,
+        tick_seconds=settings.live_tick_seconds,
+        overview_seconds=settings.overview_interval_seconds,
+        detail_min_zoom=settings.detail_min_zoom,
+    )
     app.state.store = store
     app.state.journeys = journeys
+    app.state.live = live
     follower = asyncio.create_task(follow_snapshots(broker, store))
     poller.start()
+    live.start()
     try:
         yield
     finally:
+        await live.stop()
         await poller.stop()
         follower.cancel()
         await asyncio.gather(follower, return_exceptions=True)
