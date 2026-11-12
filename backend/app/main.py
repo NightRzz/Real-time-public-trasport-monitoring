@@ -15,6 +15,7 @@ from app.live import LiveFeed
 from app.poller import GpsPoller
 from app.store import VehicleStore
 from app.sync import follow_snapshots
+from app.ws import router as ws_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -64,6 +65,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(api_router)
+app.include_router(ws_router)
 
 
 @app.get("/health", tags=["system"], summary="Health check")
