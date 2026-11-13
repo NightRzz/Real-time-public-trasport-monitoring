@@ -30,9 +30,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     journeys = JourneyService(timeout=settings.gdansk_api_timeout_seconds, broker=broker)
     live = LiveFeed(
         store,
+        journeys.get_track,
         tick_seconds=settings.live_tick_seconds,
         overview_seconds=settings.overview_interval_seconds,
         detail_min_zoom=settings.detail_min_zoom,
+        snap_max_distance=settings.snap_max_distance_m,
     )
     app.state.store = store
     app.state.journeys = journeys

@@ -269,6 +269,22 @@ class JourneyService:
 
         return await self._shapes.get((date, vehicle.route_id, vehicle.trip_id), 21600, load)
 
+    async def get_track(
+        self, vehicle: RawVehicle, now: datetime | None = None
+    ) -> tuple[list[tuple[float, float]], list[tuple[float, float] | None]] | None:
+        if vehicle.route_id is None or vehicle.trip_id is None:
+            return None
+        date = (now or datetime.now(UTC)).astimezone(WARSAW).date().isoformat()
+        route = await self._route(vehicle, date)
+        if route is None:
+            return None
+        try:
+            records = await self._stops(vehicle, date)
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+            logger.warning("stops for track unavailable: %s", exc)
+            records = []
+        return route.geometry.coordinates, [stop_coordinates(stop) for stop in records]
+
     async def _stops(self, vehicle: RawVehicle, date: str) -> list[dict]:
         by_id, order = await asyncio.gather(
             self._stop_catalog(date),

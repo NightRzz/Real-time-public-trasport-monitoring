@@ -24,6 +24,7 @@ class VehicleProperties(BaseModel):
     direction: float | None = None
     delay: int | None = None
     timestamp: datetime
+    snapped: bool = False
 
 
 class LineGeometry(BaseModel):

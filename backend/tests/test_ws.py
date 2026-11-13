@@ -11,13 +11,17 @@ from app.store import VehicleStore
 from tests.test_models import SAMPLE
 
 
+async def no_track(_):
+    return None
+
+
 @pytest.fixture
 def client():
     store = VehicleStore()
     data = GpsPositionsResponse.model_validate(SAMPLE)
     store.update(data.vehicles, data.last_update)
     app.state.store = store
-    app.state.live = LiveFeed(store)
+    app.state.live = LiveFeed(store, no_track)
     return TestClient(app)
 
 
