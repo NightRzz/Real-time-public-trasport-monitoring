@@ -8,3 +8,14 @@ export function parsePollInterval(raw: string | undefined): number {
 
 export const API_URL = import.meta.env.VITE_API_URL || DEFAULT_API_URL
 export const POLL_INTERVAL_MS = parsePollInterval(import.meta.env.VITE_POLL_INTERVAL_MS)
+
+export function liveUrl(apiUrl: string): string {
+  const url = new URL(apiUrl)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/ws/vehicles`
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
+export const LIVE_URL = liveUrl(API_URL)

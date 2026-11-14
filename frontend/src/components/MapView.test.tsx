@@ -15,6 +15,12 @@ const mapMock = vi.hoisted(() => ({
       },
       getCenter: () => ({ lng: 18.6, lat: 54.4 }),
       getZoom: () => 14,
+      getBounds: () => ({
+        getWest: () => 18.5,
+        getSouth: () => 54.3,
+        getEast: () => 18.7,
+        getNorth: () => 54.5,
+      }),
     }
   }),
   NavigationControl: vi.fn(),
@@ -51,7 +57,22 @@ describe('MapView', () => {
 
     handlers.moveend()
 
-    expect(onViewChange).toHaveBeenCalledWith({ center: [18.6, 54.4], zoom: 14 })
+    expect(onViewChange).toHaveBeenCalledWith({
+      center: [18.6, 54.4],
+      zoom: 14,
+      bounds: [18.5, 54.3, 18.7, 54.5],
+    })
+  })
+
+  it('reports initial view once map is loaded', () => {
+    const onViewChange = vi.fn()
+    render(<MapView onViewChange={onViewChange} />)
+
+    act(() => handlers.load())
+
+    expect(onViewChange).toHaveBeenCalledWith(
+      expect.objectContaining({ zoom: 14, bounds: [18.5, 54.3, 18.7, 54.5] }),
+    )
   })
 
   it('renders children only after map is loaded', () => {

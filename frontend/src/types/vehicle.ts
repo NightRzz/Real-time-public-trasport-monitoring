@@ -15,6 +15,8 @@ export interface VehicleProperties {
   direction: number | null
   delay: number | null
   timestamp: string
+  snapped?: boolean
+  path?: [number, number][]
 }
 
 export type VehicleCollection = FeatureCollection<Point, VehicleProperties> & {
@@ -22,6 +24,17 @@ export type VehicleCollection = FeatureCollection<Point, VehicleProperties> & {
 }
 
 export type VehicleFeature = Feature<Point, VehicleProperties>
+
+export type LiveFrame = VehicleCollection & {
+  type: 'FeatureCollection'
+  total: number
+  detailed: boolean
+}
+
+export interface Viewport {
+  bbox: [number, number, number, number]
+  zoom: number
+}
 
 export interface JourneyStop {
   stop_id: number

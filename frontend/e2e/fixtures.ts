@@ -1,4 +1,4 @@
-import type { Page, Route } from '@playwright/test'
+import type { Page, Route, WebSocketRoute } from '@playwright/test'
 
 const scheduledTripStartTime = new Date(Date.now() - 600_000).toISOString()
 
@@ -41,7 +41,20 @@ export async function mockVehicles(
   handler: (route: Route) => Promise<void> | void = (route) =>
     route.fulfill({ json: collection() }),
 ) {
+  await page.routeWebSocket('**/ws/vehicles', (ws) => ws.close())
   await page.route('**/api/vehicles', handler)
+  await page.route('**/api/stops', (route) =>
+    route.fulfill({ json: { type: 'FeatureCollection', features: [] } }),
+  )
+}
+
+export function liveFrame(total = 240, lastUpdate = new Date().toISOString()) {
+  return { ...collection(lastUpdate), type: 'vehicles', total, detailed: false }
+}
+
+export async function mockLive(page: Page, onSocket: (ws: WebSocketRoute) => void) {
+  await page.routeWebSocket('**/ws/vehicles', onSocket)
+  await page.route('**/api/vehicles', (route) => route.abort())
   await page.route('**/api/stops', (route) =>
     route.fulfill({ json: { type: 'FeatureCollection', features: [] } }),
   )

@@ -13,6 +13,7 @@ setWorkerUrl(workerUrl)
 export interface MapViewState {
   center: [number, number]
   zoom: number
+  bounds: [number, number, number, number]
 }
 
 export interface MapFocus {
@@ -61,18 +62,25 @@ export function MapView({
     instance.setStyle(styleUrl, { transformStyle: (_, next) => removePoiLayers(next) })
     instance.addControl(new NavigationControl(), 'top-right')
     let loaded = false
+    const report = () => {
+      const { lng, lat } = instance.getCenter()
+      const bounds = instance.getBounds()
+      onViewChangeRef.current?.({
+        center: [lng, lat],
+        zoom: instance.getZoom(),
+        bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+      })
+    }
     instance.on('load', () => {
       loaded = true
       setStyleFailed(false)
       setMap(instance)
+      report()
     })
     instance.on('error', () => {
       if (!loaded) setStyleFailed(true)
     })
-    instance.on('moveend', () => {
-      const { lng, lat } = instance.getCenter()
-      onViewChangeRef.current?.({ center: [lng, lat], zoom: instance.getZoom() })
-    })
+    instance.on('moveend', report)
     return () => {
       setMap(null)
       setStyleFailed(false)
