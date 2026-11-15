@@ -8,6 +8,22 @@ services:
       timeout: 3s
       retries: 5
 
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["recording"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: transport
+      POSTGRES_USER: transport
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-transport}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "transport", "-d", "transport"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   backend:
     build: ./backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -43,3 +59,4 @@ services:
 
 volumes:
   frontend_node_modules:
+  postgres_data:

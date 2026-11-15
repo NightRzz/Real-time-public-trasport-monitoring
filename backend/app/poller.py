@@ -1,12 +1,13 @@
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.broker import Broker
 from app.gdansk_client import GdanskApiError, GdanskClient
 from app.models import RawVehicle
+from app.recorder import FixRecorder
 from app.store import (
     SNAPSHOT_CHANNEL,
     SNAPSHOT_KEY,
@@ -29,10 +30,12 @@ class GpsPoller:
         interval: float = 1.0,
         broker: Broker | None = None,
         owner: str | None = None,
+        recorder: FixRecorder | None = None,
     ) -> None:
         self._client = client
         self._store = store
         self._broker = broker
+        self._recorder = recorder
         self._owner = owner or uuid4().hex
         self._interval = interval
         self._task: asyncio.Task | None = None
@@ -52,6 +55,8 @@ class GpsPoller:
             return
         self._store.update(data.vehicles, data.last_update)
         await self._share(data.vehicles, data.last_update)
+        if self._recorder is not None:
+            await self._recorder.record(data.vehicles, datetime.now(UTC))
         now = time.monotonic()
         self._unchanged_since = now
         self._sleep_until = now + 16.0

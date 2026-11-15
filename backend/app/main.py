@@ -13,6 +13,7 @@ from app.gdansk_client import GdanskClient
 from app.journeys import JourneyService
 from app.live import LiveFeed
 from app.poller import GpsPoller
+from app.recorder import FixRecorder
 from app.store import VehicleStore
 from app.sync import follow_snapshots
 from app.ws import router as ws_router
@@ -26,7 +27,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     broker = await create_broker(settings.redis_url)
     client = GdanskClient(timeout=settings.gdansk_api_timeout_seconds)
     store = VehicleStore()
-    poller = GpsPoller(client, store, interval=settings.poll_interval_seconds, broker=broker)
+    recorder = FixRecorder(settings.database_url) if settings.database_url else None
+    poller = GpsPoller(
+        client,
+        store,
+        interval=settings.poll_interval_seconds,
+        broker=broker,
+        recorder=recorder,
+    )
     journeys = JourneyService(timeout=settings.gdansk_api_timeout_seconds, broker=broker)
     live = LiveFeed(
         store,
@@ -52,6 +60,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await client.close()
         await journeys.close()
         await broker.close()
+        if recorder is not None:
+            await recorder.close()
 
 
 app = FastAPI(
