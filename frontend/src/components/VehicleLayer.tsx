@@ -13,21 +13,46 @@ import {
   vehicleLabelPaint,
 } from '../map/vehicleStyle'
 import type { VehicleCollection } from '../types/vehicle'
+import {
+  glidePosition,
+  positions,
+  remainingPath,
+  samePosition,
+  type Glide,
+  type Position,
+} from '../map/animation'
 
 export const VEHICLES_SOURCE = 'vehicles'
 export const VEHICLES_LAYER = 'vehicles-circle'
 export const VEHICLES_LABEL_LAYER = 'vehicles-label'
 export const VEHICLES_DIRECTION_LAYER = 'vehicles-direction'
+export const ANIMATION_MS = 1500
+export const MAX_ANIMATED_STEP = 0.005
+
+function prefersReducedMotion() {
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
 
 interface VehicleLayerProps {
   data: VehicleCollection
   onSelect?: (vehicleId: number) => void
   selectedId?: number | null
+  animationMs?: number
 }
 
-export function VehicleLayer({ data, onSelect, selectedId }: VehicleLayerProps) {
+export function VehicleLayer({
+  data,
+  onSelect,
+  selectedId,
+  animationMs = ANIMATION_MS,
+}: VehicleLayerProps) {
   const map = useMap()
   const initialData = useRef(data)
+  const shown = useRef<Map<number, Position>>(new Map())
+  const glides = useRef<Map<number, Glide>>(new Map())
 
   useEffect(() => {
     if (!map) return
@@ -68,8 +93,60 @@ export function VehicleLayer({ data, onSelect, selectedId }: VehicleLayerProps) 
 
   useEffect(() => {
     if (!map) return
-    map.getSource<GeoJSONSource>(VEHICLES_SOURCE)?.setData(data)
-  }, [map, data])
+    const source = map.getSource<GeoJSONSource>(VEHICLES_SOURCE)
+    if (!source) return
+    const now = performance.now()
+    const animate = !prefersReducedMotion() && typeof requestAnimationFrame === 'function'
+    const next = new Map<number, Glide>()
+    for (const feature of data.features) {
+      const id = feature.properties.vehicle_id
+      const target = feature.geometry.coordinates as Position
+      const glide = glides.current.get(id)
+      if (glide && samePosition(glide.to, target)) {
+        next.set(id, glide)
+        continue
+      }
+      const current = glide ? glidePosition(glide, now) : shown.current.get(id)
+      if (!animate || !current || samePosition(current, target)) continue
+      const path = feature.properties.path ? remainingPath(feature.properties.path, current) : null
+      const near =
+        Math.abs(current[0] - target[0]) < MAX_ANIMATED_STEP &&
+        Math.abs(current[1] - target[1]) < MAX_ANIMATED_STEP
+      if (path || near) {
+        next.set(id, { from: current, to: target, path, started: now, duration: animationMs })
+      }
+    }
+    glides.current = next
+    const render = (time: number) => {
+      const collection = {
+        ...data,
+        features: data.features.map((feature) => {
+          const glide = glides.current.get(feature.properties.vehicle_id)
+          if (!glide) return feature
+          if (time >= glide.started + glide.duration) {
+            glides.current.delete(feature.properties.vehicle_id)
+          }
+          return {
+            ...feature,
+            geometry: { ...feature.geometry, coordinates: glidePosition(glide, time) },
+          }
+        }),
+      }
+      source.setData(collection)
+      shown.current = positions(collection)
+    }
+    if (glides.current.size === 0) {
+      render(now)
+      return
+    }
+    let frame = 0
+    const step = (time: number) => {
+      render(time)
+      if (glides.current.size > 0) frame = requestAnimationFrame(step)
+    }
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+  }, [map, data, animationMs])
 
   useEffect(() => {
     if (!map || !onSelect) return

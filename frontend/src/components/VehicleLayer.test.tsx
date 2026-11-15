@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MapContext } from '../map/MapContext'
 import type { VehicleCollection } from '../types/vehicle'
 import { BUS_DIRECTION_IMAGE, TRAM_DIRECTION_IMAGE } from '../map/vehicleStyle'
@@ -10,6 +10,7 @@ import {
   VEHICLES_LAYER,
   VEHICLES_SOURCE,
   VehicleLayer,
+  ANIMATION_MS,
 } from './VehicleLayer'
 
 const data: VehicleCollection = {
@@ -133,6 +134,132 @@ describe('VehicleLayer', () => {
 
     expect(map.source.setData).toHaveBeenLastCalledWith(next)
     expect(map.addSource).toHaveBeenCalledTimes(1)
+  })
+
+  describe('animation', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+      vi.restoreAllMocks()
+    })
+
+    function withFrames() {
+      const frames = new Map<number, FrameRequestCallback>()
+      let id = 0
+      let clock = 0
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        frames.set(++id, cb)
+        return id
+      })
+      vi.stubGlobal('cancelAnimationFrame', (frame: number) => frames.delete(frame))
+      vi.spyOn(performance, 'now').mockImplementation(() => clock)
+      return (time: number) => {
+        clock = time
+        const pending = [...frames.values()]
+        frames.clear()
+        for (const cb of pending) cb(time)
+      }
+    }
+
+    function moved(lon: number, lat = 54.35, path?: [number, number][]): VehicleCollection {
+      return {
+        ...data,
+        features: [
+          {
+            ...data.features[0],
+            geometry: { type: 'Point', coordinates: [lon, lat] },
+            properties: { ...data.features[0].properties, path },
+          },
+        ],
+      }
+    }
+
+    function last(map: ReturnType<typeof createMap>) {
+      const collection = map.source.setData.mock.calls.at(-1)![0] as VehicleCollection
+      return collection.features[0].geometry.coordinates
+    }
+
+    function setup(animationMs?: number) {
+      const map = createMap()
+      const view = (collection: VehicleCollection) => (
+        <MapContext.Provider value={map as unknown as MapLibreMap}>
+          <VehicleLayer data={collection} animationMs={animationMs} />
+        </MapContext.Provider>
+      )
+      const { rerender } = render(view(data))
+      return { map, update: (collection: VehicleCollection) => rerender(view(collection)) }
+    }
+
+    it('glides a vehicle to its new position', () => {
+      const runFrame = withFrames()
+      const { map, update } = setup()
+      update(moved(18.602))
+
+      runFrame(ANIMATION_MS / 2)
+      expect(last(map)[0]).toBeCloseTo(18.601)
+      runFrame(ANIMATION_MS)
+      expect(last(map)[0]).toBeCloseTo(18.602)
+    })
+
+    it('follows the route path sent with a new position', () => {
+      const runFrame = withFrames()
+      const { map, update } = setup(1500)
+      update(
+        moved(18.602, 54.35, [
+          [18.6, 54.35],
+          [18.6, 54.351],
+          [18.602, 54.35],
+        ]),
+      )
+
+      runFrame(300)
+      expect(last(map)[0]).toBeCloseTo(18.6)
+      expect(last(map)[1]).toBeGreaterThan(54.35)
+      runFrame(1500)
+      expect(last(map)[0]).toBeCloseTo(18.602)
+    })
+
+    it('keeps gliding when the server repeats the same position', () => {
+      const runFrame = withFrames()
+      const { map, update } = setup()
+      update(moved(18.602))
+      runFrame(ANIMATION_MS / 2)
+
+      update(moved(18.602))
+      runFrame(ANIMATION_MS * 0.75)
+
+      expect(last(map)[0]).toBeCloseTo(18.6015, 5)
+    })
+
+    it('never runs back along the route when a new position arrives mid-glide', () => {
+      const runFrame = withFrames()
+      const { map, update } = setup(1000)
+      const route: [number, number][] = [
+        [18.6, 54.35],
+        [18.6, 54.351],
+        [18.602, 54.351],
+        [18.604, 54.351],
+      ]
+      update(moved(18.602, 54.351, route.slice(0, 3)))
+      runFrame(700)
+      const [midLon, midLat] = last(map) as [number, number]
+      expect(midLat).toBeCloseTo(54.351)
+
+      update(moved(18.604, 54.351, route))
+      runFrame(800)
+
+      const [lon, lat] = last(map) as [number, number]
+      expect(lat).toBeCloseTo(54.351)
+      expect(lon).toBeGreaterThan(midLon)
+      expect(midLat).toBeCloseTo(lat)
+    })
+
+    it('jumps when a vehicle moved too far to animate', () => {
+      withFrames()
+      const { map, update } = setup()
+      update(moved(18.7))
+
+      expect(last(map)[0]).toBe(18.7)
+    })
   })
 
   it('cleans up layer on unmount', () => {
