@@ -1,4 +1,5 @@
-import { Alert, Box, Typography } from '@mui/material'
+import { Alert, Box, IconButton, Typography } from '@mui/material'
+import DepartureBoardIcon from '@mui/icons-material/DepartureBoard'
 import { useCallback, useRef, useState } from 'react'
 import { LastUpdate } from './components/LastUpdate'
 import { MapView, type MapFocus, type MapViewState } from './components/MapView'
@@ -148,6 +149,29 @@ function App() {
           now={now}
         />
         <VehicleStatus isLoading={isLoading} error={error} />
+        <IconButton
+          component="a"
+          href={'https://www.totalcasino.pl/choose-registration?referrer=X0acOmqOVivScPJ0LktUi0bgFaWg%3D%3D'}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Czekam na przystanku"
+          title="Czekam na przystanku"
+          sx={{
+            position: 'absolute',
+            bottom: 16,
+            left: 10,
+            zIndex: 1,
+            width: 48,
+            height: 48,
+            borderRadius: 1,
+            bgcolor: 'background.paper',
+            color: 'text.primary',
+            boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.1)',
+            '&:hover': { bgcolor: 'grey.100' },
+          }}
+        >
+          <DepartureBoardIcon />
+        </IconButton>
         {stops.isError && (
           <Alert
             severity="warning"
