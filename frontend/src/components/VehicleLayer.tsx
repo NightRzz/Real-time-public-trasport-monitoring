@@ -11,9 +11,12 @@ import {
   vehicleDirectionLayout,
   vehicleLabelLayout,
   vehicleLabelPaint,
+  vehicleStrokeColor,
+  vehicleStrokeWidth,
 } from '../map/vehicleStyle'
 import type { VehicleCollection } from '../types/vehicle'
 import {
+  glidePose,
   glidePosition,
   positions,
   remainingPath,
@@ -112,8 +115,9 @@ export function VehicleLayer({
       const near =
         Math.abs(current[0] - target[0]) < MAX_ANIMATED_STEP &&
         Math.abs(current[1] - target[1]) < MAX_ANIMATED_STEP
+      const duration = feature.properties.glide_ms ?? animationMs
       if (path || near) {
-        next.set(id, { from: current, to: target, path, started: now, duration: animationMs })
+        next.set(id, { from: current, to: target, path, started: now, duration })
       }
     }
     glides.current = next
@@ -126,9 +130,14 @@ export function VehicleLayer({
           if (time >= glide.started + glide.duration) {
             glides.current.delete(feature.properties.vehicle_id)
           }
+          const pose = glidePose(glide, time)
           return {
             ...feature,
-            geometry: { ...feature.geometry, coordinates: glidePosition(glide, time) },
+            geometry: { ...feature.geometry, coordinates: pose.position },
+            properties:
+              pose.bearing !== null
+                ? { ...feature.properties, direction: pose.bearing }
+                : feature.properties,
           }
         }),
       }
@@ -174,18 +183,8 @@ export function VehicleLayer({
 
   useEffect(() => {
     if (!map) return
-    map.setPaintProperty(VEHICLES_LAYER, 'circle-stroke-color', [
-      'case',
-      ['==', ['get', 'vehicle_id'], selectedId ?? -1],
-      '#172b4d',
-      '#ffffff',
-    ])
-    map.setPaintProperty(VEHICLES_LAYER, 'circle-stroke-width', [
-      'case',
-      ['==', ['get', 'vehicle_id'], selectedId ?? -1],
-      4,
-      1.5,
-    ])
+    map.setPaintProperty(VEHICLES_LAYER, 'circle-stroke-color', vehicleStrokeColor(selectedId))
+    map.setPaintProperty(VEHICLES_LAYER, 'circle-stroke-width', vehicleStrokeWidth(selectedId))
   }, [map, selectedId])
 
   return null

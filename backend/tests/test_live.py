@@ -96,7 +96,7 @@ def test_transition_snaps_vehicle_onto_route():
 
 def test_transition_sends_route_path_for_fresh_fix():
     first = vehicle(lon=east(65), age=20)
-    feed = feed_with_track(first)
+    feed = feed_with_track(first, interpolation_mode="snap")
     feed.transition(first, NOW)
     second = vehicle(lon=east(265), age=0)
 
@@ -106,6 +106,53 @@ def test_transition_sends_route_path_for_fresh_fix():
     assert feature["properties"]["path"][-1][0] == pytest.approx(east(265), abs=1e-6)
     feed._fixes[1].seen_at -= 10
     assert "path" not in feed.transition(second, NOW)["properties"]
+
+
+def test_damped_mode_advances_smoothly_and_clamps_before_next_stop():
+    v = vehicle(lon=east(65), speed=36.0, age=0)
+    feed = feed_with_track(v)
+    stop_m = 0.005 * METRES_X
+
+    f0 = feed.transition(v, NOW, glide_ms=1050)
+    f5 = feed.transition(v, NOW + timedelta(seconds=5), glide_ms=1050)
+    f25 = feed.transition(v, NOW + timedelta(seconds=25), glide_ms=1050)
+
+    assert along(f0) == pytest.approx(65, abs=0.5)
+    assert f0["properties"]["extrapolated"] is False
+    assert along(f5) > along(f0) + 30
+    assert f5["properties"]["extrapolated"] is True
+    assert f5["properties"]["glide_ms"] == 1050
+    assert "path" in f5["properties"]
+    assert along(f25) > along(f5)
+    assert along(f25) < stop_m
+
+
+def test_damped_mode_stops_before_close_stop_and_is_idempotent_per_tick():
+    stop_m = 0.005 * METRES_X
+    v = vehicle(lon=east(stop_m - 40), speed=54.0, age=0)
+    feed = feed_with_track(v)
+
+    feed.transition(v, NOW, glide_ms=1050)
+    t10_a = feed.transition(v, NOW + timedelta(seconds=10), glide_ms=1050)
+    t10_b = feed.transition(v, NOW + timedelta(seconds=10), glide_ms=1050)
+
+    assert t10_a == t10_b
+    assert along(t10_a) < stop_m + 0.5
+    assert along(t10_a) > stop_m - 40
+
+
+def test_damped_mode_holds_without_rewinding_on_small_overshoot():
+    first = vehicle(lon=east(65), speed=54.0, age=0)
+    feed = feed_with_track(first)
+    feed.transition(first, NOW)
+    projected = along(feed.transition(first, NOW + timedelta(seconds=10)))
+    assert projected > 160
+
+    # Vehicle actually slowed down 35 m behind our projection.
+    second = vehicle(lon=east(projected - 35), speed=0.0, age=-10)
+    held = feed.transition(second, NOW + timedelta(seconds=10))
+    assert along(held) == pytest.approx(projected, abs=0.5)
+    assert held["properties"]["holding"] is True
 
 
 def test_vehicle_far_from_route_keeps_raw_gps():

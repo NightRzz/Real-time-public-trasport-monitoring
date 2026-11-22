@@ -49,42 +49,42 @@ async def check():
             return httpx.Response(503)
         if name == "shapes":
             assert dict(request.url.params) == dict(date=date, routeId="8", tripId="11")
+        if name == "stops":
+            assert dict(request.url.params) == dict(date=date)
+        if name == "stopsInTrip":
+            assert dict(request.url.params) == dict(date=date, routeId="8", tripId="11")
         payload = {
             "shapes": dict(type="LineString", coordinates=[[18.6, 54.35], [18.7, 54.4]]),
-            "stops.json": {
-                date: {
-                    "stops": [
-                        dict(
-                            stopId=i,
-                            stopName=f"Stop {i}",
-                            stopCode="01",
-                            type="TRAM",
-                            stopLon=18.6,
-                            stopLat=54.35,
-                        )
-                        for i in (1, 2)
-                    ]
-                    + [
-                        dict(stopId=3, type="UNKNOWN"),
-                        dict(stopId=4, type="BUS", virtual=1),
-                        dict(stopId=5, type="BUS", nonpassenger=1),
-                        dict(stopId=6, type="BUS", depot=1),
-                        dict(stopId=7, type="BUS", stopLon="nan", stopLat=54.35),
-                    ]
-                }
+            "stops": {
+                "stops": [
+                    dict(
+                        stopId=i,
+                        stopName=f"Stop {i}",
+                        stopCode="01",
+                        type="TRAM",
+                        stopLon=18.6,
+                        stopLat=54.35,
+                    )
+                    for i in (1, 2)
+                ]
+                + [
+                    dict(stopId=3, type="UNKNOWN"),
+                    dict(stopId=4, type="BUS", virtual=1),
+                    dict(stopId=5, type="BUS", nonpassenger=1),
+                    dict(stopId=6, type="BUS", depot=1),
+                    dict(stopId=7, type="BUS", stopLon="nan", stopLat=54.35),
+                ]
             },
-            "stopsintrip.json": {
-                date: {
-                    "stopsInTrip": [
-                        dict(routeId=8, tripId=11, stopId=i, stopSequence=i, passenger=True)
-                        for i in (2, 1)
-                    ]
-                    + [
-                        dict(routeId=8, tripId=12, stopId=3, stopSequence=1, passenger=True),
-                        dict(routeId=9, tripId=11, stopId=3, stopSequence=1, passenger=True),
-                        dict(routeId=8, tripId=11, stopId=4, stopSequence=0, passenger=True),
-                    ]
-                }
+            "stopsInTrip": {
+                "stopsInTrip": [
+                    dict(routeId=8, tripId=11, stopId=i, stopSequence=i, passenger=True)
+                    for i in (2, 1)
+                ]
+                + [
+                    dict(routeId=8, tripId=12, stopId=3, stopSequence=1, passenger=True),
+                    dict(routeId=9, tripId=11, stopId=3, stopSequence=1, passenger=True),
+                    dict(routeId=8, tripId=11, stopId=4, stopSequence=0, passenger=True),
+                ]
             },
             "departures": boards,
         }
@@ -117,7 +117,7 @@ async def check():
         assert [stop.id for stop in stops.features] == [1, 2]
         assert stops.features[0].properties.type == "tram"
         assert stops.features[0].geometry.coordinates == (18.6, 54.35)
-        assert calls["stops.json"] == 1  # Same catalog as vehicle predictions.
+        assert calls["stops"] == 1  # Same catalog as vehicle predictions.
         arrivals = await service.get_stop_arrivals(1, now)
         assert arrivals.status == "available" and arrivals.arrivals[0].realtime
         assert arrivals.arrivals[0].time == now + timedelta(minutes=4)
@@ -185,12 +185,12 @@ async def check():
     stale = await journey(vehicle.model_copy(update={"timestamp": now - timedelta(minutes=5)}))
     assert stale.prediction_status == "stale"
     assert [s.passed for s in stale.stops] == [None, None]  # An old GPS fix cannot place it.
-    for source in ("stops.json", "stopsintrip.json", "departures", "shapes"):
+    for source in ("stops", "stopsInTrip", "departures", "shapes"):
         failures.add(source)
         result = await journey()
         assert (result.route is None) == (source == "shapes")
         assert (result.next_stop is None) == (source != "shapes")
-        assert result.stop_ids == (None if source in {"stops.json", "stopsintrip.json"} else [1, 2])
+        assert result.stop_ids == (None if source in {"stops", "stopsInTrip"} else [1, 2])
         if source == "departures":
             assert [s.estimated_time for s in result.stops] == [None, None]
         failures.clear()

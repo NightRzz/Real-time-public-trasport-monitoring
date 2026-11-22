@@ -1,4 +1,4 @@
-from app.progress import METRES_X, passed_stops
+from app.progress import METRES_X, locate, passed_stops
 
 
 def east(metres: float, north: float = 0.0) -> tuple[float, float]:
@@ -26,3 +26,11 @@ def test_unknown_position():
     line = [east(0), east(1000)]
     assert passed_stops(line, [east(0)], east(500, north=500), heading=None) is None
     assert passed_stops(line, [east(0), None], east(500), heading=None) is None
+
+
+def test_locate_window_keeps_vehicle_on_current_pass():
+    line = [east(0), east(1000), east(1000, north=10), east(0, north=10)]
+    # Without heading on an out-and-back street, windowed search stays on the inbound pass.
+    found = locate(line, east(600, north=5), start=1200.0, end=1600.0)
+    assert found is not None
+    assert 1350.0 < found[0] < 1450.0

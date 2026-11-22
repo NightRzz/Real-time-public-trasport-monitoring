@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { glidePosition, pointAlong, remainingPath, type Glide } from './animation'
+import { glidePosition, pointAlong, poseAlong, remainingPath, type Glide } from './animation'
 
 const path: [number, number][] = [
   [18.6, 54.35],
@@ -18,12 +18,23 @@ describe('pointAlong', () => {
   })
 })
 
+describe('poseAlong', () => {
+  it('computes segment bearing around corners', () => {
+    expect(poseAlong(path, 0.2).bearing).toBe(0)
+    expect(poseAlong(path, 0.8).bearing).toBe(90)
+  })
+})
+
 describe('remainingPath', () => {
   it('continues from the nearest segment without going back', () => {
     expect(remainingPath(path, [18.61, 54.36])).toEqual([
       [18.61, 54.36],
       [18.62, 54.36],
     ])
+  })
+
+  it('preserves the first corner when starting slightly behind path[0]', () => {
+    expect(remainingPath(path, [18.6, 54.3499])).toEqual([[18.6, 54.3499], ...path])
   })
 
   it('gives up when the marker is far from the path', () => {

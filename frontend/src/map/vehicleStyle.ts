@@ -1,7 +1,13 @@
-import type { CircleLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl'
+import type {
+  CircleLayerSpecification,
+  ExpressionSpecification,
+  SymbolLayerSpecification,
+} from 'maplibre-gl'
 
 export const TRAM_COLOR = '#c62828'
 export const BUS_COLOR = '#1565c0'
+export const HOLDING_COLOR = '#fbc02d'
+export const SELECTED_COLOR = '#172b4d'
 export const TRAM_DIRECTION_IMAGE = 'vehicle-direction-tram'
 export const BUS_DIRECTION_IMAGE = 'vehicle-direction-bus'
 
@@ -37,11 +43,33 @@ export const vehicleDirectionLayout: SymbolLayerSpecification['layout'] = {
   'icon-ignore-placement': true,
 }
 
+export function vehicleStrokeColor(selectedId?: number | null): ExpressionSpecification {
+  return [
+    'case',
+    ['==', ['get', 'holding'], true],
+    HOLDING_COLOR,
+    ['==', ['get', 'vehicle_id'], selectedId ?? -1],
+    SELECTED_COLOR,
+    '#ffffff',
+  ]
+}
+
+export function vehicleStrokeWidth(selectedId?: number | null): ExpressionSpecification {
+  return [
+    'case',
+    ['==', ['get', 'vehicle_id'], selectedId ?? -1],
+    4,
+    ['==', ['get', 'holding'], true],
+    3,
+    1.5,
+  ]
+}
+
 export const vehicleCirclePaint: CircleLayerSpecification['paint'] = {
   'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 4, 13, 9, 16, 12],
   'circle-color': ['match', ['get', 'type'], 'tram', TRAM_COLOR, BUS_COLOR],
-  'circle-stroke-width': 1.5,
-  'circle-stroke-color': '#ffffff',
+  'circle-stroke-width': vehicleStrokeWidth(),
+  'circle-stroke-color': vehicleStrokeColor(),
 }
 
 export const vehicleLabelLayout: SymbolLayerSpecification['layout'] = {

@@ -32,17 +32,17 @@ def service(stops_status=200, shape_status=200):
             return httpx.Response(200, json={"type": "LineString", "coordinates": LINE})
         if stops_status != 200:
             return httpx.Response(stops_status)
-        if name == "stops.json":
+        if name == "stops":
             stops = [
                 {"stopId": 1, "stopName": "A", "type": "TRAM", "stopLon": 18.6, "stopLat": 54.35},
                 {"stopId": 2, "stopName": "B", "type": "TRAM", "stopLon": 18.7, "stopLat": 54.4},
             ]
-            return httpx.Response(200, json={DATE: {"stops": stops}})
+            return httpx.Response(200, json={"stops": stops})
         order = [
             {"routeId": 8, "tripId": 11, "stopId": i, "stopSequence": i, "passenger": True}
             for i in (2, 1)
         ]
-        return httpx.Response(200, json={DATE: {"stopsInTrip": order}})
+        return httpx.Response(200, json={"stopsInTrip": order})
 
     return JourneyService(transport=httpx.MockTransport(handler))
 

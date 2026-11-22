@@ -43,6 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         overview_seconds=settings.overview_interval_seconds,
         detail_min_zoom=settings.detail_min_zoom,
         snap_max_distance=settings.snap_max_distance_m,
+        interpolation_mode=settings.interpolation_mode,
     )
     app.state.store = store
     app.state.journeys = journeys

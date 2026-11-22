@@ -16,7 +16,10 @@ export interface VehicleProperties {
   delay: number | null
   timestamp: string
   snapped?: boolean
+  extrapolated?: boolean
+  holding?: boolean
   path?: [number, number][]
+  glide_ms?: number
 }
 
 export type VehicleCollection = FeatureCollection<Point, VehicleProperties> & {

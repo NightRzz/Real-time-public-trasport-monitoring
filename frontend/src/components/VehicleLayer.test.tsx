@@ -3,7 +3,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MapContext } from '../map/MapContext'
 import type { VehicleCollection } from '../types/vehicle'
-import { BUS_DIRECTION_IMAGE, TRAM_DIRECTION_IMAGE } from '../map/vehicleStyle'
+import { BUS_DIRECTION_IMAGE, HOLDING_COLOR, TRAM_DIRECTION_IMAGE } from '../map/vehicleStyle'
 import {
   VEHICLES_DIRECTION_LAYER,
   VEHICLES_LABEL_LAYER,
@@ -115,6 +115,11 @@ describe('VehicleLayer', () => {
         layout: expect.objectContaining({ 'text-field': ['get', 'line'] }),
       }),
     )
+    expect(map.setPaintProperty).toHaveBeenCalledWith(
+      VEHICLES_LAYER,
+      'circle-stroke-color',
+      expect.arrayContaining([['==', ['get', 'holding'], true], HOLDING_COLOR]),
+    )
   })
 
   it('updates source when new data arrives', () => {
@@ -160,22 +165,31 @@ describe('VehicleLayer', () => {
       }
     }
 
-    function moved(lon: number, lat = 54.35, path?: [number, number][]): VehicleCollection {
+    function moved(
+      lon: number,
+      lat = 54.35,
+      path?: [number, number][],
+      glideMs?: number,
+    ): VehicleCollection {
       return {
         ...data,
         features: [
           {
             ...data.features[0],
             geometry: { type: 'Point', coordinates: [lon, lat] },
-            properties: { ...data.features[0].properties, path },
+            properties: { ...data.features[0].properties, path, glide_ms: glideMs },
           },
         ],
       }
     }
 
-    function last(map: ReturnType<typeof createMap>) {
+    function lastFeature(map: ReturnType<typeof createMap>) {
       const collection = map.source.setData.mock.calls.at(-1)![0] as VehicleCollection
-      return collection.features[0].geometry.coordinates
+      return collection.features[0]
+    }
+
+    function last(map: ReturnType<typeof createMap>) {
+      return lastFeature(map).geometry.coordinates
     }
 
     function setup(animationMs?: number) {
@@ -259,6 +273,30 @@ describe('VehicleLayer', () => {
       update(moved(18.7))
 
       expect(last(map)[0]).toBe(18.7)
+    })
+
+    it('respects server glide_ms and rotates bearing along curves', () => {
+      const runFrame = withFrames()
+      const { map, update } = setup(1500)
+      update(
+        moved(
+          18.602,
+          54.351,
+          [
+            [18.6, 54.35],
+            [18.6, 54.351],
+            [18.602, 54.351],
+          ],
+          1000,
+        ),
+      )
+
+      runFrame(200)
+      expect(lastFeature(map).properties.direction).toBe(0)
+      runFrame(800)
+      expect(lastFeature(map).properties.direction).toBe(90)
+      runFrame(1000)
+      expect(last(map)).toEqual([18.602, 54.351])
     })
   })
 

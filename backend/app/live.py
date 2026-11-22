@@ -8,12 +8,19 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import pairwise
 from time import monotonic
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.geojson import vehicle_to_feature
+from app.interpolation import (
+    DEFAULT_MOTION,
+    MotionConfig,
+    MotionState,
+    evaluate_tick,
+    ingest_fix,
+)
 from app.models import RawVehicle
 from app.progress import _xy, locate
 from app.store import VehicleStore
@@ -21,6 +28,7 @@ from app.store import VehicleStore
 logger = logging.getLogger(__name__)
 
 Point = tuple[float, float]
+InterpolationMode = Literal["damped", "snap"]
 TrackLoader = Callable[[RawVehicle], Awaitable[tuple[list[Point], list[Point | None]] | None]]
 
 MAX_LIVE_AGE_SECONDS = 90
@@ -33,6 +41,10 @@ TRACK_RETRY_SECONDS = 600.0
 MAX_TRACK_LOADS = 5
 SEND_TIMEOUT_SECONDS = 2.0
 SCHEDULE_SLACK_SECONDS = 0.05
+WINDOW_BACK_M = 50.0
+WINDOW_MIN_FORWARD_M = 150.0
+WINDOW_SPEED_MS = 30.0
+GLIDE_OVERLAP = 1.05
 WARSAW = ZoneInfo("Europe/Warsaw")
 
 
@@ -164,6 +176,8 @@ class LiveFeed:
         overview_seconds: float = 5.0,
         detail_min_zoom: float = 13.0,
         snap_max_distance: float = 75.0,
+        interpolation_mode: InterpolationMode = "damped",
+        motion_config: MotionConfig = DEFAULT_MOTION,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._store = store
@@ -172,12 +186,15 @@ class LiveFeed:
         self._overview = overview_seconds
         self._detail_zoom = detail_min_zoom
         self._snap = snap_max_distance
+        self._interpolation = interpolation_mode
+        self._motion_config = motion_config
         self._clock = clock
         self.clients: set[LiveClient] = set()
         self._tracks: dict[tuple[Any, ...], Track | None] = {}
         self._failed: dict[tuple[Any, ...], float] = {}
         self._loading: dict[tuple[Any, ...], asyncio.Task] = {}
         self._fixes: dict[int, Fix] = {}
+        self._motion: dict[int, MotionState] = {}
         self._raw: tuple[int, dict[int, dict[str, Any]]] = (-1, {})
         self._limit = asyncio.Semaphore(MAX_TRACK_LOADS)
         self._task: asyncio.Task | None = None
@@ -250,17 +267,50 @@ class LiveFeed:
             self._request_track(vehicle, now)
         return track
 
+    def _locate_on_track(
+        self,
+        vehicle: RawVehicle,
+        track: Track,
+        prev_along: float | None = None,
+        prev_timestamp: datetime | None = None,
+    ) -> tuple[float, float] | None:
+        point = (vehicle.lon, vehicle.lat)
+        if prev_along is not None and prev_timestamp is not None:
+            dt = (vehicle.timestamp - prev_timestamp).total_seconds()
+            if dt > 0:
+                window_start = max(0.0, prev_along - WINDOW_BACK_M)
+                window_end = prev_along + max(WINDOW_MIN_FORWARD_M, dt * WINDOW_SPEED_MS)
+                found = locate(
+                    track.line,
+                    point,
+                    start=window_start,
+                    heading=vehicle.direction,
+                    end=window_end,
+                )
+                if found is not None and found[1] <= self._snap:
+                    return found
+        found = locate(track.line, point, heading=vehicle.direction)
+        if found is None or found[1] > self._snap:
+            return None
+        return found
+
     def _fix(self, vehicle: RawVehicle, track: Track) -> Fix | None:
         fix = self._fixes.get(vehicle.vehicle_id)
         trip = trip_key(vehicle)
         if fix is not None and fix.trip == trip and fix.timestamp == vehicle.timestamp:
             return fix
-        found = locate(track.line, (vehicle.lon, vehicle.lat), heading=vehicle.direction)
-        if found is None or found[1] > self._snap:
+        same_trip = fix is not None and fix.trip == trip
+        found = self._locate_on_track(
+            vehicle,
+            track,
+            fix.along if same_trip and fix is not None else None,
+            fix.timestamp if same_trip and fix is not None else None,
+        )
+        if found is None:
             self._fixes.pop(vehicle.vehicle_id, None)
             return None
         previous = None
-        if fix is not None and fix.trip == trip and fix.timestamp < vehicle.timestamp:
+        if same_trip and fix is not None and fix.timestamp < vehicle.timestamp:
             previous = (fix.timestamp, fix.along)
         fix = Fix(trip, vehicle.timestamp, found[0], previous, monotonic())
         self._fixes[vehicle.vehicle_id] = fix
@@ -274,10 +324,57 @@ class LiveFeed:
         feature["properties"]["snapped"] = True
         return feature
 
-    def transition(self, vehicle: RawVehicle, now: datetime) -> dict[str, Any] | None:
+    def _damped_transition(
+        self, vehicle: RawVehicle, track: Track, now: datetime, glide_ms: int | None
+    ) -> dict[str, Any] | None:
+        state = self._motion.get(vehicle.vehicle_id)
+        trip = trip_key(vehicle)
+        if state is None or state.trip != trip or state.fix_timestamp != vehicle.timestamp:
+            same_trip = state is not None and state.trip == trip
+            found = self._locate_on_track(
+                vehicle,
+                track,
+                state.fix_along if same_trip and state is not None else None,
+                state.fix_timestamp if same_trip and state is not None else None,
+            )
+            if found is None:
+                self._motion.pop(vehicle.vehicle_id, None)
+                return None
+            state = ingest_fix(
+                state,
+                trip,
+                vehicle.timestamp,
+                found[0],
+                vehicle.speed,
+                track.stops,
+                track.length,
+                now,
+                self._motion_config,
+            )
+            self._motion[vehicle.vehicle_id] = state
+        tick = evaluate_tick(state, now, self._motion_config)
+        feature = self._snapped(vehicle, track, tick.along)
+        feature["properties"]["extrapolated"] = tick.extrapolated
+        feature["properties"]["holding"] = tick.holding
+        if tick.slice_start is not None:
+            feature["properties"]["path"] = track.slice(tick.slice_start, tick.along)
+            if glide_ms is not None:
+                feature["properties"]["glide_ms"] = glide_ms
+        return feature
+
+    def transition(
+        self, vehicle: RawVehicle, now: datetime, glide_ms: int | None = None
+    ) -> dict[str, Any] | None:
         track = self._track(vehicle, now)
-        fix = None if track is None else self._fix(vehicle, track)
-        if track is None or fix is None:
+        if track is None:
+            if (now - vehicle.timestamp).total_seconds() > MAX_LIVE_AGE_SECONDS:
+                self._motion.pop(vehicle.vehicle_id, None)
+                self._fixes.pop(vehicle.vehicle_id, None)
+            return None
+        if self._interpolation == "damped":
+            return self._damped_transition(vehicle, track, now, glide_ms)
+        fix = self._fix(vehicle, track)
+        if fix is None:
             return None
         feature = self._snapped(vehicle, track, fix.along)
         if fix.previous is not None and monotonic() - fix.seen_at < PATH_SECONDS:
@@ -291,6 +388,7 @@ class LiveFeed:
         vehicles, last_update = self._store.snapshot()
         raw = self._raw_features(vehicles)
         detailed = self.detailed(client)
+        glide_ms = round(self._tick * 1000 * GLIDE_OVERLAP) if detailed else None
         features = []
         for vehicle in vehicles:
             feature = raw.get(vehicle.vehicle_id)
@@ -301,7 +399,7 @@ class LiveFeed:
             if not (selected or watched) and not client.contains(vehicle.lon, vehicle.lat):
                 continue
             if detailed or selected:
-                feature = self.transition(vehicle, now) or feature
+                feature = self.transition(vehicle, now, glide_ms=glide_ms) or feature
             features.append(feature)
         return {
             "type": "vehicles",

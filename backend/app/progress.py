@@ -16,22 +16,34 @@ def _xy(point: Point) -> Point:
 
 
 def locate(
-    line: list[Point], point: Point, start: float = 0.0, heading: float | None = None
+    line: list[Point],
+    point: Point,
+    start: float = 0.0,
+    heading: float | None = None,
+    end: float | None = None,
 ) -> tuple[float, float] | None:
-    """Return (metres along the line, metres off the line) of the nearest position after start."""
+    """Return (metres along, metres off) for the nearest position in [start, end]."""
     px, py = _xy(point)
     candidates, matching, travelled = [], [], 0.0
     for (ax, ay), (bx, by) in pairwise(map(_xy, line)):
+        if end is not None and travelled > end:
+            break
         dx, dy = bx - ax, by - ay
         length = hypot(dx, dy)
         if length and travelled + length >= start:
             low = max(0.0, (start - travelled) / length)
-            t = min(1.0, max(low, ((px - ax) * dx + (py - ay) * dy) / length**2))
-            candidate = (travelled + t * length, hypot(ax + t * dx - px, ay + t * dy - py))
-            candidates.append(candidate)
-            turn = None if heading is None else (degrees(atan2(dx, dy)) - heading + 180) % 360 - 180
-            if turn is not None and abs(turn) < 90:
-                matching.append(candidate)
+            high = 1.0 if end is None else min(1.0, (end - travelled) / length)
+            if low <= high:
+                t = min(high, max(low, ((px - ax) * dx + (py - ay) * dy) / length**2))
+                candidate = (travelled + t * length, hypot(ax + t * dx - px, ay + t * dy - py))
+                candidates.append(candidate)
+                turn = (
+                    None
+                    if heading is None
+                    else (degrees(atan2(dx, dy)) - heading + 180) % 360 - 180
+                )
+                if turn is not None and abs(turn) < 90:
+                    matching.append(candidate)
         travelled += length
     pool = matching or candidates
     if not pool:

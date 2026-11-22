@@ -32,11 +32,8 @@ from app.vehicle_type import detect_vehicle_type
 
 logger = logging.getLogger(__name__)
 WARSAW = ZoneInfo("Europe/Warsaw")
-RESOURCE_BASE = (
-    "https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/"
-)
-STOPS_URL = RESOURCE_BASE + "4c4025f0-01bf-41f7-a39f-d156d201b82b/download/stops.json"
-STOP_ORDER_URL = RESOURCE_BASE + "3115d29d-b763-4af5-93f6-763b835967d6/download/stopsintrip.json"
+STOPS_URL = "https://ckan2.multimediagdansk.pl/stops"
+STOP_ORDER_URL = "https://ckan2.multimediagdansk.pl/stopsInTrip"
 SHAPES_URL = "https://ckan2.multimediagdansk.pl/shapes"
 DEPARTURES_URL = "https://ckan2.multimediagdansk.pl/departures"
 MAX_LIVE_AGE_SECONDS = 90
@@ -54,8 +51,7 @@ class Cache:
         decode: Callable[[Any], Any] = lambda value: value,
     ) -> None:
         self._entries: dict[Any, tuple[float, Any]] = {}
-        # ponytail: misses serialize per cache; use per-key locks if concurrent selections grow.
-        self._lock = asyncio.Lock()
+        self._locks: dict[Any, asyncio.Lock] = {}
         self._capacity = capacity
         self._broker = broker
         self._namespace = namespace
@@ -91,17 +87,25 @@ class Cache:
             logger.warning("shared cache write failed for %s", self._namespace)
 
     async def get(self, key: Any, ttl: float, load: Callable[[], Awaitable[Any]]) -> Any:
-        async with self._lock:
-            cached = self._entries.get(key)
-            if cached and cached[0] > monotonic():
-                return cached[1]
-            shared = await self._shared(key)
-            if shared is not None:
-                value, remaining = shared
-                return self._remember(key, min(ttl, remaining), value)
-            value = await load()
-            await self._share(key, ttl, value)
-            return self._remember(key, ttl, value)
+        cached = self._entries.get(key)
+        if cached and cached[0] > monotonic():
+            return cached[1]
+        lock = self._locks.setdefault(key, asyncio.Lock())
+        try:
+            async with lock:
+                cached = self._entries.get(key)
+                if cached and cached[0] > monotonic():
+                    return cached[1]
+                shared = await self._shared(key)
+                if shared is not None:
+                    value, remaining = shared
+                    return self._remember(key, min(ttl, remaining), value)
+                value = await load()
+                await self._share(key, ttl, value)
+                return self._remember(key, ttl, value)
+        finally:
+            if not lock.locked():
+                self._locks.pop(key, None)
 
 
 def parse_time(value: Any) -> datetime | None:
@@ -135,6 +139,7 @@ class JourneyService:
     ) -> None:
         self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
         self._static = Cache(capacity=4, broker=broker, namespace="static")
+        self._stop_orders = Cache(capacity=512, broker=broker, namespace="stop_orders")
         self._shapes = Cache(
             capacity=512,
             broker=broker,
@@ -152,21 +157,37 @@ class JourneyService:
         response.raise_for_status()
         return response.json()
 
-    async def _daily(self, url: str, date: str, field: str) -> list[dict]:
+    async def _daily_stops(self, date: str) -> list[dict]:
         async def load() -> list[dict]:
-            # The downloads include multiple dates. Retain only the requested day's data.
-            payload = await self._json(url)
-            rows = payload[date][field]
+            payload = await self._json(STOPS_URL, date=date)
+            rows = payload.get("stops") if isinstance(payload, dict) else None
             if not isinstance(rows, list):
-                raise ValueError("Invalid static resource")
+                raise ValueError("Invalid stops response")
             return rows
 
-        return await self._static.get((url, date), 3600, load)
+        return await self._static.get((STOPS_URL, date), 3600, load)
+
+    async def _stop_order(self, vehicle: RawVehicle, date: str) -> list[dict]:
+        async def load() -> list[dict]:
+            try:
+                payload = await self._json(
+                    STOP_ORDER_URL, date=date, routeId=vehicle.route_id, tripId=vehicle.trip_id
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    return []
+                raise
+            rows = payload.get("stopsInTrip") if isinstance(payload, dict) else None
+            if not isinstance(rows, list):
+                raise ValueError("Invalid stop order response")
+            return rows
+
+        return await self._stop_orders.get((date, vehicle.route_id, vehicle.trip_id), 21600, load)
 
     async def _stop_catalog(self, date: str) -> dict[int, dict]:
         return {
             stop["stopId"]: stop
-            for stop in await self._daily(STOPS_URL, date, "stops")
+            for stop in await self._daily_stops(date)
             if not (stop.get("nonpassenger") or stop.get("virtual") or stop.get("depot"))
         }
 
@@ -281,16 +302,15 @@ class JourneyService:
         try:
             records = await self._stops(vehicle, date)
         except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
-            logger.warning("stops for track unavailable: %s", exc)
+            logger.warning("stops for track unavailable: %r", exc)
             records = []
         return route.geometry.coordinates, [stop_coordinates(stop) for stop in records]
 
     async def _stops(self, vehicle: RawVehicle, date: str) -> list[dict]:
         by_id, order = await asyncio.gather(
             self._stop_catalog(date),
-            self._daily(STOP_ORDER_URL, date, "stopsInTrip"),
+            self._stop_order(vehicle, date),
         )
-        # ponytail: scan the day's variants per selection; index by route/trip if traffic grows.
         entries = [
             entry
             for entry in order
@@ -379,7 +399,7 @@ class JourneyService:
         if isinstance(route, BaseException):
             if isinstance(route, asyncio.CancelledError):
                 raise route
-            logger.warning("route fetch failed: %s", route)
+            logger.warning("route fetch failed: %r", route)
             result.route_status = "error"
         elif route:
             result.route = route
@@ -396,7 +416,7 @@ class JourneyService:
         if isinstance(prediction, BaseException):
             if isinstance(prediction, asyncio.CancelledError):
                 raise prediction
-            logger.warning("prediction fetch failed: %s", prediction)
+            logger.warning("prediction fetch failed: %r", prediction)
             result.prediction_status = "error"
         else:
             estimates, result.prediction_status = prediction
